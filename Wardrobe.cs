@@ -149,6 +149,8 @@ internal static class Wardrobe
         string filename = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + "-" + outfit.Character.GetInstanceID() + ".json";
         string path = Path.Combine(Plugin.ReportsPath, filename);
         File.WriteAllText(path, JsonSerializer.Serialize(report, RuleStore.Json));
+        // Keep only the newest reports so diagnostics cannot fill the game folder.
+        foreach (var old in new DirectoryInfo(Plugin.ReportsPath).GetFiles("*.json").OrderByDescending(f => f.Name).Skip(10)) try { old.Delete(); } catch (IOException) { }
         Plugin.Logger.LogInfo($"Outfit report for '{outfit.Character.name}': {path}");
     }
 }

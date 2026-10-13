@@ -44,6 +44,8 @@ internal sealed class CoverageFitter
             var garments = outfit.Renderers.Where(r => r.enabled && r.gameObject.activeInHierarchy && !r.forceRenderingOff
                 && OriginalMesh(r) != null && outfit.Items.TryGetValue(outfit.OwnerOf(r), out var item) && item.Visible && item.Layer >= 0).ToArray();
             string signature = outfit.Signature();
+            // Reach scales with the character so tall/short models get proportional windows.
+            float scale = Math.Clamp(outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body").Select(r => r.bounds.size.y).DefaultIfEmpty(1.7f).Max() / 1.7f, .6f, 1.4f);
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
@@ -66,7 +68,7 @@ internal sealed class CoverageFitter
                         && OriginalMesh(r).isReadable && coverage[r.GetInstanceID()].parts.Length > 0;
                 }).OrderBy(r => r.GetInstanceID()).ToArray();
                 if (parts.Length > 0 && covers.Length > 0)
-                    Request(target, covers, covers.Select(r => coverage[r.GetInstanceID()].parts).ToArray(),
+                    Request(scale, target, covers, covers.Select(r => coverage[r.GetInstanceID()].parts).ToArray(),
                         covers.Select(r => coverage[r.GetInstanceID()].opacities).ToArray(), parts, signature, wanted, body,
                         item?.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory,
                         covers.Select(r => !body && ClothingOrder.WaistSeam(item.Layer,item.Kind,outfit.Items[outfit.OwnerOf(r)].Layer,outfit.Items[outfit.OwnerOf(r)].Kind)).ToArray(), ref capturesLeft);
@@ -76,13 +78,13 @@ internal sealed class CoverageFitter
         alpha.End();
     }
 
-    private void Request(SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
+    private void Request(float scale, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
         int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft)
     {
         int id = target.GetInstanceID();
         var original = OriginalMesh(target);
         var coverOriginals = covers.Select(OriginalMesh).ToArray();
-        string key = outfit + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
+        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
             + string.Join(",", covers.Select((r, i) => r.GetInstanceID() + "/" + coverOriginals[i].GetInstanceID() + "/"
                 + string.Join(".", coverParts[i].Select(part => part + "=" + (opacities[i][part]?.Signature ?? "opaque")))));
         wanted.Add(id);
@@ -108,7 +110,8 @@ internal sealed class CoverageFitter
                 state.Job = Task.Run(async () =>
                 {
                     await Worker.WaitAsync(token);
-                    try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body); }
+                    try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body,
+                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: Plugin.CoverDepthCm.Value / 100 * scale, scale: scale); }
                     finally { Worker.Release(); }
                 }, token);
             }

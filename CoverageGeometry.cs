@@ -70,7 +70,7 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1)
     {
         cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
@@ -105,8 +105,10 @@ internal static class CoverageGeometry
             return node;
         }
         var root = Build(0, triangles.Length);
-        bool Hit(Node node, Vector3 origin, Vector3 direction, float distance = .09f, float targetY = float.PositiveInfinity)
+        float cast = reach + depth;
+        bool Hit(Node node, Vector3 origin, Vector3 direction, float distance = -1, float targetY = float.PositiveInfinity)
         {
+            if (distance < 0) distance = cast;
             if (!BoxHit(node.Min, node.Max, origin, direction, distance)) return false;
             if (node.Left != null) return Hit(node.Left, origin, direction, distance,targetY) || Hit(node.Right, origin, direction, distance,targetY);
             for (int i = node.Start; i < node.Start + node.Count; i++)
@@ -121,12 +123,12 @@ internal static class CoverageGeometry
         bool Covered(Vector3 p, Vector3 normal)
         {
             normal = Unit(normal);
-            if (normal == Vector3.Zero || !Hit(root, p + normal * .055f, -normal,targetY:p.Y)) return false;
+            if (normal == Vector3.Zero || !Hit(root, p + normal * reach, -normal,targetY:p.Y)) return false;
             if (!skin) return true;
             // Keep exposed skin beside openings, including curved cleavage and underbust edges.
-            var tangent = Unit(Vector3.Cross(normal, Math.Abs(normal.Y) < .9f ? Vector3.UnitY : Vector3.UnitX)) * .004f;
+            var tangent = Unit(Vector3.Cross(normal, Math.Abs(normal.Y) < .9f ? Vector3.UnitY : Vector3.UnitX)) * .004f * scale;
             var bitangent = Vector3.Cross(normal, tangent);
-            bool Nearby(Vector3 offset) => Hit(root, p + offset + normal * .055f, -normal, targetY: (p + offset).Y);
+            bool Nearby(Vector3 offset) => Hit(root, p + offset + normal * reach, -normal, targetY: (p + offset).Y);
             return Nearby(tangent) && Nearby(-tangent) && Nearby(bitangent) && Nearby(-bitangent);
         }
         var jewelleryAxes = new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ };

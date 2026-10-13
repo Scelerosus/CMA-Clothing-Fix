@@ -13,7 +13,7 @@ public sealed class Plugin : BasePlugin
     internal static ManualLogSource Logger;
     internal static ConfigEntry<bool> Enabled, Diagnostics;
     internal static ConfigEntry<bool> ExperimentalCoverage;
-    internal static ConfigEntry<float> RefreshSeconds;
+    internal static ConfigEntry<float> RefreshSeconds, CoverReachCm, CoverDepthCm;
     internal static ConfigEntry<KeyCode> MenuKey;
     internal static ConfigFile Settings;
     internal static string RulesPath, ReportsPath;
@@ -26,6 +26,8 @@ public sealed class Plugin : BasePlugin
         Diagnostics = Config.Bind("General", "Diagnostics", false, "Write outfit reports when outfits change; also available in the menu.");
         ExperimentalCoverage = Config.Bind("General", "ExperimentalCoverage", true, "Local coverage masks using all native garment layers and opaque material surfaces.");
         RefreshSeconds = Config.Bind("General", "RefreshSeconds", 2f, new ConfigDescription("Seconds between scheduled automatic pose updates.", new AcceptableValueRange<float>(2f, 30f)));
+        CoverReachCm = Config.Bind("Coverage", "CoverReachCm", 2f, new ConfigDescription("How far above the skin (cm, for a 170 cm character) a garment may float and still hide skin beneath it. Lower keeps more skin near loose cups.", new AcceptableValueRange<float>(.5f, 6f)));
+        CoverDepthCm = Config.Bind("Coverage", "CoverDepthCm", 5f, new ConfigDescription("How deep below the skin (cm, for a 170 cm character) a garment may sink and still hide the skin over it. Raise for very large busts.", new AcceptableValueRange<float>(1f, 10f)));
         MenuKey = Config.Bind("Keys", "Menu", KeyCode.Slash, "Open clipping menu.");
         RulesPath = Path.Combine(Paths.ConfigPath, "CMAClothingFix.rules.json");
         ReportsPath = Path.Combine(Paths.BepInExRootPath, "CMAClothingFix-reports");
