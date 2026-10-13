@@ -110,8 +110,9 @@ internal sealed class CoverageFitter
                 state.Job = Task.Run(async () =>
                 {
                     await Worker.WaitAsync(token);
+                    // Cloth under cloth sinks mm, not cm: a deep window reaches through insteps to shoe soles.
                     try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body,
-                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: Plugin.CoverDepthCm.Value / 100 * scale, scale: scale); }
+                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale); }
                     finally { Worker.Release(); }
                 }, token);
             }

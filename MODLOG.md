@@ -95,3 +95,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.5.3 — proportional skin-mask reach
 - Skin was hidden whenever any garment lay within a fixed 5.5 cm above / 3.5 cm below it along the vertex normal, so loose cups and straps hid skin that stays visible from other angles. Reach is now configurable (`[Coverage] CoverReachCm` 2, `CoverDepthCm` 5, defined for a 170 cm character) and scaled by body-bounds height. Geometry defaults are unchanged; managed checks and Release build pass.
 - Not installed and not verified in game. Per-model bust/hip proportions are only approximated by height; raise `CoverDepthCm` if skin pokes through on large busts.
+
+## 0.5.4 — shallow window for cloth under cloth
+- Screenshot showed stocking triangles cut away at the ankle inside the shoe opening (log: veiled_stockings 942/3118 masked). The 5 cm depth added in 0.5.3 reached shoe soles through the instep. Depth now applies only to skin (`CoverDepthCm`); garments under garments use 1.5 cm scaled by height. Not installed or verified in game.
