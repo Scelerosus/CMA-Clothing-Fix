@@ -1,0 +1,36 @@
+{
+  "InstalledAt": "2026-10-12T05:49:17.1159792+03:00",
+  "Version": "0.4.0",
+  "Plugins": [
+    {
+      "Source": "C:/Users/Scelerosus/source/repos/CMAClothingFix/bin/Release/CMAClothingFix.dll",
+      "Target": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/plugins/CMAClothingFix/CMAClothingFix.dll",
+      "Previous": "0.3.0",
+      "Backup": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/plugins/CMAClothingFix/CMAClothingFix.dll.before-polish-0.3.0-20261012-054917.bak",
+      "SHA256": "191A4EDE8BFBCEDB376AEB79139A7BC62C5C9E037279F5364F9282348AEA9A32"
+    },
+    {
+      "Source": "C:/Users/Scelerosus/source/repos/copilot-worktrees/CMAScenes-technical/bin/Release/CMAScenes.dll",
+      "Target": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/plugins/CMAScenes/CMAScenes.dll",
+      "Previous": "0.3.42",
+      "Backup": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/plugins/CMAScenes/CMAScenes.dll.before-polish-0.3.42-20261012-054917.bak",
+      "SHA256": "57291B47E0E572448947FEA17B11460D99869F06344D92E29B367A13F2236072"
+    }
+  ],
+  "Configs": [
+    {
+      "Path": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/config/community.cma.clothingfix.cfg",
+      "Backup": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/config/community.cma.clothingfix.cfg.before-polish-20261012-054917.bak"
+    },
+    {
+      "Path": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/config/community.cma.scenes.cfg",
+      "Backup": "C:/Games/Corrupted Modeling Agency 0.66/BepInEx/config/community.cma.scenes.cfg.before-polish-20261012-054917.bak"
+    }
+  ],
+  "RuntimeChecked": false,
+  "GeometryChecks": 54,
+  "WardrobeChecks": 42,
+  "CatalogChecks": 38,
+  "UiSourceChecks": 29,
+  "UnityEntryPoints": 555
+}

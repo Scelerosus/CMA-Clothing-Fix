@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>CMAClothingFix</AssemblyName>
+    <Version>0.5.2</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GameDir Condition="'$(GameDir)' == ''">C:\Games\Corrupted Modeling Agency 0.66</GameDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+    <Reference Include="$(GameDir)\BepInEx\core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(GameDir)\BepInEx\core\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(GameDir)\BepInEx\core\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(GameDir)\BepInEx\core\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(GameDir)\BepInEx\interop\*.dll" Private="false" />
+  </ItemGroup>
+</Project>
