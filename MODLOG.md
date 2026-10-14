@@ -104,3 +104,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.6 — never mask skin on the feet
 - Bare foot in pumps still showed a jagged hole at the instep after the shallow window (0.5.5), so depth was not the cause. Skin triangles below 15 cm above the body floor (scaled) are now left untouched; the 0.5.5 shallow window was removed as dead. Limitation: lying poses get no skin masking. Not verified in game.
+
+## 0.5.7 — higher foot exemption for heels
+- Close-up in 0.5.6 still showed rectangular skin notches at the ankle above red pumps: with heels the ankle sits above the 15 cm cut. Foot exemption raised to 24 cm (scaled) above the body floor. If notches persist, test with ExperimentalCoverage off to separate this mask from the game own foot hiding. Not verified in game.

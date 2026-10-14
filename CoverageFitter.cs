@@ -48,7 +48,7 @@ internal sealed class CoverageFitter
             var bodies = outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body").ToArray();
             float scale = Math.Clamp(bodies.Select(r => r.bounds.size.y).DefaultIfEmpty(1.7f).Max() / 1.7f, .6f, 1.4f);
             // shortcut: assumes a standing pose; lying poses stop masking skin entirely.
-            float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .09f * 1.7f * scale;
+            float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .14f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
