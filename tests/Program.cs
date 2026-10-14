@@ -41,6 +41,8 @@ Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToke
     "skin well inside opaque fabric still receives clipping protection");
 Check(CoverageGeometry.Mask(target,normals,Quad(-1,-.102f,1,1),new[]{0},CancellationToken.None,.002f).Removed==1,
     "skin edge protection does not change garment masks");
+Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToken.None,skin:true,keepVertex:new[]{false,true,false}).Removed==0,
+    "triangles touching protected extremity vertices are never hidden");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

@@ -110,3 +110,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.8 — foot exemption covers hosiery too
 - 0.5.7 screenshots (mod on vs off) still showed a jagged dark hole in the pump opening with the mod on and a clean foot with it off. With tights worn the stocking was masked under the shoe, so neither stocking nor skin showed in the opening. The below-ankle exemption now applies to every masked renderer, not only skin. Not verified in game.
+
+## 0.5.9 — never hide hands, feet or head skin
+- Report showed body skin uses HDRP/LayeredLitTessellation (no alpha clip), so material-based boundary trimming is impossible for skin; foot behaviour stays as in 0.5.8. Added a bone-based guard: body triangles whose vertices are dominantly weighted to Head/Hand/Foot/Toe/finger bones are never masked. Bust, hips and torso keep their poke-through masking. Not verified in game.
