@@ -70,7 +70,7 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float shallowBelowY = float.NegativeInfinity, float shallowDepth = .01f)
     {
         cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
@@ -123,12 +123,12 @@ internal static class CoverageGeometry
         bool Covered(Vector3 p, Vector3 normal)
         {
             normal = Unit(normal);
-            if (normal == Vector3.Zero || !Hit(root, p + normal * reach, -normal,targetY:p.Y)) return false;
+            if (normal == Vector3.Zero || !Hit(root, p + normal * reach, -normal, p.Y < shallowBelowY ? reach + shallowDepth : cast, p.Y)) return false;
             if (!skin) return true;
             // Keep exposed skin beside openings, including curved cleavage and underbust edges.
             var tangent = Unit(Vector3.Cross(normal, Math.Abs(normal.Y) < .9f ? Vector3.UnitY : Vector3.UnitX)) * .004f * scale;
             var bitangent = Vector3.Cross(normal, tangent);
-            bool Nearby(Vector3 offset) => Hit(root, p + offset + normal * reach, -normal, targetY: (p + offset).Y);
+            bool Nearby(Vector3 offset) => Hit(root, p + offset + normal * reach, -normal, p.Y < shallowBelowY ? reach + shallowDepth : cast, (p + offset).Y);
             return Nearby(tangent) && Nearby(-tangent) && Nearby(bitangent) && Nearby(-bitangent);
         }
         var jewelleryAxes = new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ };

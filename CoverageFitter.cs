@@ -45,7 +45,10 @@ internal sealed class CoverageFitter
                 && OriginalMesh(r) != null && outfit.Items.TryGetValue(outfit.OwnerOf(r), out var item) && item.Visible && item.Layer >= 0).ToArray();
             string signature = outfit.Signature();
             // Reach scales with the character so tall/short models get proportional windows.
-            float scale = Math.Clamp(outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body").Select(r => r.bounds.size.y).DefaultIfEmpty(1.7f).Max() / 1.7f, .6f, 1.4f);
+            var bodies = outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body").ToArray();
+            float scale = Math.Clamp(bodies.Select(r => r.bounds.size.y).DefaultIfEmpty(1.7f).Max() / 1.7f, .6f, 1.4f);
+            // shortcut: assumes a standing pose; lying poses get the shallow window everywhere, restoring only the old narrow behaviour.
+            float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .09f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
@@ -68,7 +71,7 @@ internal sealed class CoverageFitter
                         && OriginalMesh(r).isReadable && coverage[r.GetInstanceID()].parts.Length > 0;
                 }).OrderBy(r => r.GetInstanceID()).ToArray();
                 if (parts.Length > 0 && covers.Length > 0)
-                    Request(scale, target, covers, covers.Select(r => coverage[r.GetInstanceID()].parts).ToArray(),
+                    Request(scale, footY, target, covers, covers.Select(r => coverage[r.GetInstanceID()].parts).ToArray(),
                         covers.Select(r => coverage[r.GetInstanceID()].opacities).ToArray(), parts, signature, wanted, body,
                         item?.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory,
                         covers.Select(r => !body && ClothingOrder.WaistSeam(item.Layer,item.Kind,outfit.Items[outfit.OwnerOf(r)].Layer,outfit.Items[outfit.OwnerOf(r)].Kind)).ToArray(), ref capturesLeft);
@@ -78,7 +81,7 @@ internal sealed class CoverageFitter
         alpha.End();
     }
 
-    private void Request(float scale, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
+    private void Request(float scale, float footY, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
         int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft)
     {
         int id = target.GetInstanceID();
@@ -112,7 +115,7 @@ internal sealed class CoverageFitter
                     await Worker.WaitAsync(token);
                     // Cloth under cloth sinks mm, not cm: a deep window reaches through insteps to shoe soles.
                     try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body,
-                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale); }
+                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale, shallowBelowY: footY); }
                     finally { Worker.Release(); }
                 }, token);
             }

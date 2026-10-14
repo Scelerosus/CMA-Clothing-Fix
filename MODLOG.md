@@ -98,3 +98,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.4 — shallow window for cloth under cloth
 - Screenshot showed stocking triangles cut away at the ankle inside the shoe opening (log: veiled_stockings 942/3118 masked). The 5 cm depth added in 0.5.3 reached shoe soles through the instep. Depth now applies only to skin (`CoverDepthCm`); garments under garments use 1.5 cm scaled by height. Not installed or verified in game.
+
+## 0.5.5 — shallow skin window at the feet
+- Feet still missing after 0.5.4: body skin used the deep window (CoverDepthCm) at insteps, reaching shoe soles. Skin below 15 cm above the body-bounds floor (scaled) now uses a 1 cm window. Standing-pose heuristic; not verified in game.
