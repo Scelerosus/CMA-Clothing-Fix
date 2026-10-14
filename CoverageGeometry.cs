@@ -70,7 +70,7 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float shallowBelowY = float.NegativeInfinity, float shallowDepth = .01f)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepSkinBelowY = float.NegativeInfinity)
     {
         cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
@@ -123,12 +123,12 @@ internal static class CoverageGeometry
         bool Covered(Vector3 p, Vector3 normal)
         {
             normal = Unit(normal);
-            if (normal == Vector3.Zero || !Hit(root, p + normal * reach, -normal, p.Y < shallowBelowY ? reach + shallowDepth : cast, p.Y)) return false;
+            if (normal == Vector3.Zero || !Hit(root, p + normal * reach, -normal, cast, p.Y)) return false;
             if (!skin) return true;
             // Keep exposed skin beside openings, including curved cleavage and underbust edges.
             var tangent = Unit(Vector3.Cross(normal, Math.Abs(normal.Y) < .9f ? Vector3.UnitY : Vector3.UnitX)) * .004f * scale;
             var bitangent = Vector3.Cross(normal, tangent);
-            bool Nearby(Vector3 offset) => Hit(root, p + offset + normal * reach, -normal, p.Y < shallowBelowY ? reach + shallowDepth : cast, (p + offset).Y);
+            bool Nearby(Vector3 offset) => Hit(root, p + offset + normal * reach, -normal, cast, (p + offset).Y);
             return Nearby(tangent) && Nearby(-tangent) && Nearby(bitangent) && Nearby(-bitangent);
         }
         var jewelleryAxes = new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ };
@@ -159,7 +159,8 @@ internal static class CoverageGeometry
                 Vector3 a = target.Vertices[ia], b = target.Vertices[ib], c = target.Vertices[ic];
                 Vector3 face = Unit(Vector3.Cross(b - a, c - a));
                 bool hide = false;
-                if (face != Vector3.Zero)
+                // Feet: the shoe opening and a thin instep make the normal test unreliable, so skin there is never masked.
+                if (face != Vector3.Zero && !(skin && (a.Y + b.Y + c.Y) / 3 < keepSkinBelowY))
                 {
                     var na = NormalAt(ia, face); var nb = NormalAt(ib, face); var nc = NormalAt(ic, face);
                     var center = (a + b + c) / 3;

@@ -101,3 +101,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.5 — shallow skin window at the feet
 - Feet still missing after 0.5.4: body skin used the deep window (CoverDepthCm) at insteps, reaching shoe soles. Skin below 15 cm above the body-bounds floor (scaled) now uses a 1 cm window. Standing-pose heuristic; not verified in game.
+
+## 0.5.6 — never mask skin on the feet
+- Bare foot in pumps still showed a jagged hole at the instep after the shallow window (0.5.5), so depth was not the cause. Skin triangles below 15 cm above the body floor (scaled) are now left untouched; the 0.5.5 shallow window was removed as dead. Limitation: lying poses get no skin masking. Not verified in game.
