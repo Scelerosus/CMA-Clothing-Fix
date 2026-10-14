@@ -70,7 +70,7 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepSkinBelowY = float.NegativeInfinity)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity)
     {
         cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
@@ -159,8 +159,8 @@ internal static class CoverageGeometry
                 Vector3 a = target.Vertices[ia], b = target.Vertices[ib], c = target.Vertices[ic];
                 Vector3 face = Unit(Vector3.Cross(b - a, c - a));
                 bool hide = false;
-                // Feet: the shoe opening and a thin instep make the normal test unreliable, so skin there is never masked.
-                if (face != Vector3.Zero && !(skin && (a.Y + b.Y + c.Y) / 3 < keepSkinBelowY))
+                // Feet: shoe openings and a thin instep make the normal test unreliable, so skin and hosiery there are never masked.
+                if (face != Vector3.Zero && !((a.Y + b.Y + c.Y) / 3 < keepBelowY))
                 {
                     var na = NormalAt(ia, face); var nb = NormalAt(ib, face); var nc = NormalAt(ic, face);
                     var center = (a + b + c) / 3;

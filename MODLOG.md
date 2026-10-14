@@ -107,3 +107,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.7 — higher foot exemption for heels
 - Close-up in 0.5.6 still showed rectangular skin notches at the ankle above red pumps: with heels the ankle sits above the 15 cm cut. Foot exemption raised to 24 cm (scaled) above the body floor. If notches persist, test with ExperimentalCoverage off to separate this mask from the game own foot hiding. Not verified in game.
+
+## 0.5.8 — foot exemption covers hosiery too
+- 0.5.7 screenshots (mod on vs off) still showed a jagged dark hole in the pump opening with the mod on and a clean foot with it off. With tights worn the stocking was masked under the shoe, so neither stocking nor skin showed in the opening. The below-ankle exemption now applies to every masked renderer, not only skin. Not verified in game.
