@@ -113,3 +113,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.9 — never hide hands, feet or head skin
 - Report showed body skin uses HDRP/LayeredLitTessellation (no alpha clip), so material-based boundary trimming is impossible for skin; foot behaviour stays as in 0.5.8. Added a bone-based guard: body triangles whose vertices are dominantly weighted to Head/Hand/Foot/Toe/finger bones are never masked. Bust, hips and torso keep their poke-through masking. Not verified in game.
+
+## 0.5.10 — toes stay maskable
+- The dark bone-shaped spot on the left pump is toes poking through the shoe (visible with the mod off too); 0.5.8/0.5.9 had disabled the mask that hides them. Toe-bone vertices are now excluded from the foot and extremity exemptions; the rest of the foot stays protected. Toe triangles are small, so whole-triangle masking should not take half the foot. Not verified in game.

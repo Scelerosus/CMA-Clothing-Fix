@@ -43,6 +43,9 @@ Check(CoverageGeometry.Mask(target,normals,Quad(-1,-.102f,1,1),new[]{0},Cancella
     "skin edge protection does not change garment masks");
 Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToken.None,skin:true,keepVertex:new[]{false,true,false}).Removed==0,
     "triangles touching protected extremity vertices are never hidden");
+Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToken.None,skin:true,keepBelowY:10f).Removed==0
+    && CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToken.None,skin:true,keepBelowY:10f,toeVertex:new[]{false,true,false}).Removed==1,
+    "toe triangles stay maskable below the foot exemption");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

@@ -70,7 +70,7 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null)
     {
         cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
@@ -160,7 +160,9 @@ internal static class CoverageGeometry
                 Vector3 face = Unit(Vector3.Cross(b - a, c - a));
                 bool hide = false;
                 // Feet: shoe openings and a thin instep make the normal test unreliable, so skin and hosiery there are never masked.
-                if (face != Vector3.Zero && !((a.Y + b.Y + c.Y) / 3 < keepBelowY) && !(keepVertex != null && (keepVertex[ia] || keepVertex[ib] || keepVertex[ic])))
+                bool toe = toeVertex != null && (toeVertex[ia] || toeVertex[ib] || toeVertex[ic]);
+                // Toes are the one foot part that does poke through shoes, so they stay maskable.
+                if (face != Vector3.Zero && (toe || !((a.Y + b.Y + c.Y) / 3 < keepBelowY)) && !(keepVertex != null && (keepVertex[ia] || keepVertex[ib] || keepVertex[ic])))
                 {
                     var na = NormalAt(ia, face); var nb = NormalAt(ib, face); var nc = NormalAt(ic, face);
                     var center = (a + b + c) / 3;

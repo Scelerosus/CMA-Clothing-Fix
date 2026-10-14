@@ -108,7 +108,8 @@ internal sealed class CoverageFitter
                     || states.Values.Any(s => (s.Job == null || s.Finished) && s.ReadyAt < state.ReadyAt)) return;
                 capturesLeft--;
                 var input = Capture(target, original, Enumerable.Range(0, original.subMeshCount).ToArray());
-                var keep = body ? VisibleExtremities(target, original) : null;
+                var keep = body ? VisibleExtremities(target, original, Extremity) : null;
+                var toes = body ? VisibleExtremities(target, original, Toes) : null;
                 var surfaces = covers.Select((r, i) => Capture(r, coverOriginals[i], coverParts[i], opacities[i]).surface).ToArray();
                 var token = state.Cancel.Token;
                 state.Job = Task.Run(async () =>
@@ -116,7 +117,7 @@ internal sealed class CoverageFitter
                     await Worker.WaitAsync(token);
                     // Cloth under cloth sinks mm, not cm: a deep window reaches through insteps to shoe soles.
                     try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body,
-                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale, keepBelowY: footY, keepVertex: keep); }
+                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale, keepBelowY: footY, keepVertex: keep, toeVertex: toes); }
                     finally { Worker.Release(); }
                 }, token);
             }
@@ -161,13 +162,14 @@ internal sealed class CoverageFitter
     }
 
     // Hands, feet and head are usually on show and never need poke-through masking, so their skin is never hidden.
-    private static readonly System.Text.RegularExpressions.Regex Extremity = new(@"(Head|Hand|Foot|Toe|Thumb|Index\d|Mid\d|Ring\d|Pinky\d)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-    private static bool[] VisibleExtremities(SkinnedMeshRenderer renderer, Mesh mesh)
+    private static readonly System.Text.RegularExpressions.Regex Extremity = new(@"(Head|Hand|Foot|Thumb|Index\d|Mid\d|Ring\d|Pinky\d)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex Toes = new(@"Toe", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static bool[] VisibleExtremities(SkinnedMeshRenderer renderer, Mesh mesh, System.Text.RegularExpressions.Regex pattern)
     {
         var bones = renderer.bones;
         var weights = mesh.boneWeights;
         if (bones == null || weights == null || weights.Length != mesh.vertexCount) return null;
-        var protectedBone = bones.Select(b => b != null && Extremity.IsMatch(b.name)).ToArray();
+        var protectedBone = bones.Select(b => b != null && pattern.IsMatch(b.name)).ToArray();
         return weights.Select(w => w.boneIndex0 >= 0 && w.boneIndex0 < protectedBone.Length && protectedBone[w.boneIndex0]).ToArray();
     }
 
