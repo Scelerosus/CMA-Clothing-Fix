@@ -116,3 +116,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.10 — toes stay maskable
 - The dark bone-shaped spot on the left pump is toes poking through the shoe (visible with the mod off too); 0.5.8/0.5.9 had disabled the mask that hides them. Toe-bone vertices are now excluded from the foot and extremity exemptions; the rest of the foot stays protected. Toe triangles are small, so whole-triangle masking should not take half the foot. Not verified in game.
+
+## 0.5.11 — keep cloth under a thick outer hem; build targets game 0.67
+- Latex jacket over a skirt left a jagged cut under the jacket hem (whole-triangle masking around a flared ribbed hem). New `[Coverage] CoverHemKeepCm` (default 3, scaled by height): a cloth triangle is hidden only if the points 3 cm below its corners are covered too, so a strip under the lower hem of an outer garment stays visible. Does not affect skin; 0 disables.
+- Game moved to `C:\Games\Corrupted Modeling Agency 0.67`; csproj GameDir default updated and the build verified against 0.67 interop. Not verified in game.

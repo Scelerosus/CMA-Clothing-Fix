@@ -46,6 +46,9 @@ Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToke
 Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToken.None,skin:true,keepBelowY:10f).Removed==0
     && CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToken.None,skin:true,keepBelowY:10f,toeVertex:new[]{false,true,false}).Removed==1,
     "toe triangles stay maskable below the foot exemption");
+Check(CoverageGeometry.Mask(target,normals,Quad(-1,-.102f,1,1),new[]{0},CancellationToken.None,.002f).Removed==1
+    && CoverageGeometry.Mask(target,normals,Quad(-1,-.102f,1,1),new[]{0},CancellationToken.None,.002f,hemKeep:.03f).Removed==0,
+    "cloth just under an outer hem is kept when hemKeep is set");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

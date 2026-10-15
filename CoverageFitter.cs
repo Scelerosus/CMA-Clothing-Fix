@@ -87,7 +87,7 @@ internal sealed class CoverageFitter
         int id = target.GetInstanceID();
         var original = OriginalMesh(target);
         var coverOriginals = covers.Select(OriginalMesh).ToArray();
-        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
+        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
             + string.Join(",", covers.Select((r, i) => r.GetInstanceID() + "/" + coverOriginals[i].GetInstanceID() + "/"
                 + string.Join(".", coverParts[i].Select(part => part + "=" + (opacities[i][part]?.Signature ?? "opaque")))));
         wanted.Add(id);
@@ -117,7 +117,7 @@ internal sealed class CoverageFitter
                     await Worker.WaitAsync(token);
                     // Cloth under cloth sinks mm, not cm: a deep window reaches through insteps to shoe soles.
                     try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body,
-                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale, keepBelowY: footY, keepVertex: keep, toeVertex: toes); }
+                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .015f) * scale, scale: scale, keepBelowY: footY, keepVertex: keep, toeVertex: toes, hemKeep: body ? 0 : Plugin.CoverHemKeepCm.Value / 100 * scale); }
                     finally { Worker.Release(); }
                 }, token);
             }

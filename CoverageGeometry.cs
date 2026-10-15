@@ -70,7 +70,7 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null, float hemKeep = 0)
     {
         cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
@@ -178,7 +178,9 @@ internal static class CoverageGeometry
                         && Sample(Inset((c + a) / 2), nc + na) && Sample(center, na + nb + nc)
                         && Sample((a * 2 + b + c) / 4, na * 2 + nb + nc)
                         && Sample((a + b * 2 + c) / 4, na + nb * 2 + nc)
-                        && Sample((a + b + c * 2) / 4, na + nb + nc * 2);
+                        && Sample((a + b + c * 2) / 4, na + nb + nc * 2)
+                        // A garment's lower hem is thick and flared, so cloth right under it stays visible instead of ending in a jagged cut.
+                        && (hemKeep <= 0 || Covered(a - Vector3.UnitY * hemKeep, na) && Covered(b - Vector3.UnitY * hemKeep, nb) && Covered(c - Vector3.UnitY * hemKeep, nc));
                 }
                 if (hide) removed++;
                 else if (refine && face != Vector3.Zero)

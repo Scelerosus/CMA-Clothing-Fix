@@ -2,11 +2,11 @@
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>CMAClothingFix</AssemblyName>
-    <Version>0.5.10</Version>
+    <Version>0.5.11</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <GameDir Condition="'$(GameDir)' == ''">C:\Games\Corrupted Modeling Agency 0.66</GameDir>
+    <GameDir Condition="'$(GameDir)' == ''">C:\Games\Corrupted Modeling Agency 0.67</GameDir>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
