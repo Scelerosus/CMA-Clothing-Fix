@@ -109,7 +109,7 @@ internal static class CoverageGeometry
         return (triangles, root);
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null, float hemKeep = 0)
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null, float hemKeep = 0, SkinInfo snapSkin = null)
     {
         cancel.ThrowIfCancellationRequested();
         var (triangles, root) = BuildBvh(cover, cancel);
@@ -225,7 +225,39 @@ internal static class CoverageGeometry
             }
             kept[sub] = output.SequenceEqual(source) ? source : output.ToArray();
         }
-        return new Result(kept, removed, total, added.ToArray());
+        Vector3[] snapped = null;
+        if (snapSkin != null && snapSkin.Index.Length == target.Vertices.Length * 4 && vertexNormals.Length == target.Vertices.Length)
+        {
+            // Edge snapping: a covered vertex of a visible boundary triangle slides along its edge to where coverage ends,
+            // so the cut follows the garment edge instead of whole-triangle stair steps. Vertex count and skinning stay untouched.
+            bool Exempt(int i) => (keepVertex != null && keepVertex[i]) || target.Vertices[i].Y < keepBelowY && !(toeVertex != null && toeVertex[i]);
+            var state = new sbyte[target.Vertices.Length];
+            bool Cov(int i) => state[i] != 0 ? state[i] > 0 : (state[i] = (sbyte)(!Exempt(i) && CoveredVertex(i, Vector3.Zero) ? 1 : -1)) > 0;
+            var sum = new Vector3[target.Vertices.Length]; var count = new int[target.Vertices.Length];
+            void Edge(int x, int y)
+            {
+                if (!Cov(x) || Cov(y)) return;
+                cancel.ThrowIfCancellationRequested();
+                Vector3 px = target.Vertices[x], py = target.Vertices[y];
+                float lo = 0, hi = 1;
+                for (int step = 0; step < 6; step++)
+                {
+                    float mid = (lo + hi) / 2;
+                    if (Covered(Vector3.Lerp(px, py, mid), vertexNormals[x] + (vertexNormals[y] - vertexNormals[x]) * mid)) lo = mid; else hi = mid;
+                }
+                sum[x] += (py - px) * lo; count[x]++;
+            }
+            foreach (int sub in selected)
+                for (int i = 0; i + 2 < kept[sub].Length; i += 3)
+                {
+                    int a = kept[sub][i], b = kept[sub][i + 1], c = kept[sub][i + 2];
+                    Edge(a, b); Edge(a, c); Edge(b, a); Edge(b, c); Edge(c, a); Edge(c, b);
+                }
+            snapped = new Vector3[target.Vertices.Length];
+            for (int v = 0; v < snapped.Length; v++)
+                if (count[v] > 0 && Unskin(snapSkin, v, sum[v] / count[v], out var rest)) snapped[v] = rest;
+        }
+        return new Result(kept, removed, total, added.ToArray(), snapped);
     }
 
 

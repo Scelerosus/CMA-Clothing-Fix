@@ -141,7 +141,7 @@ internal static class Wardrobe
         }).ToArray();
         var report = new
         {
-            Version = "0.5.1", Character = outfit.Character.name,
+            Version = Plugin.Version, Character = outfit.Character.name,
             Note = "@body means not owned by a wardrobe item; it can include hair/accessories. Never apply a blanket body rule.",
             Items = outfit.Items.Values.Select(x => new { x.Id, x.Coverage, x.Visible, x.Layer, Kind = x.Kind.ToString() }).ToArray(),
             Renderers = renderers

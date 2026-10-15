@@ -57,6 +57,10 @@ Check(Push(Plane(.02f)).Removed==0,"vertex well beneath cloth is not moved");
 Check(Math.Abs(Push(Plane(.001f)).Offsets[0].Z+.001f)<1e-5f,"vertex too close under cloth is pushed to the 2 mm margin");
 Check(Math.Abs(Push(Plane(-.01f),2).Offsets[0].Z+.006f)<1e-5f,"world push is converted through the skin matrix to rest space");
 Check(Push(Plane(-.05f)).Removed==0,"cloth farther than the push limit is ignored");
+var snapResult = CoverageGeometry.Mask(target,normals,Quad(-1,0,1,1),new[]{0},CancellationToken.None,snapSkin:Skin());
+Check(snapResult.Removed==0 && snapResult.Offsets!=null && Math.Abs(snapResult.Offsets[2].Y+.1f)<.01f && snapResult.Offsets[0]==Vector3.Zero && snapResult.Offsets[1]==Vector3.Zero,
+    "covered boundary vertex snaps to the garment edge, uncovered vertices stay");
+Check(CoverageGeometry.Mask(target,normals,Quad(-1,0,1,1),new[]{0},CancellationToken.None).Offsets==null,"no snapping unless requested");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

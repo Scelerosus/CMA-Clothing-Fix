@@ -113,8 +113,8 @@ internal sealed class CoverageFitter
                 var toes = body ? VisibleExtremities(target, original, Toes) : null;
                 var surfaces = covers.Select((r, i) => Capture(r, coverOriginals[i], coverParts[i], opacities[i]).surface).ToArray();
                 var token = state.Cancel.Token;
-                bool push = Plugin.Mode.Value == "Push";
-                var skin = push ? CaptureSkin(target, original) : null;
+                bool push = Plugin.Mode.Value == "Push", snap = Plugin.Mode.Value == "Snap";
+                var skin = push || snap ? CaptureSkin(target, original) : null;
                 state.Job = push ? Task.Run(async () =>
                 {
                     await Worker.WaitAsync(token);
@@ -126,7 +126,7 @@ internal sealed class CoverageFitter
                     await Worker.WaitAsync(token);
                     // Cloth under cloth gets the original 3.5 cm window: a bust pushes inner layers out through a coat by centimetres. Feet are exempt separately, so shoe soles no longer matter.
                     try { return CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, token, body ? 0 : .002f, jewellery, skin: body,
-                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .035f) * scale, scale: scale, keepBelowY: footY, keepVertex: keep, toeVertex: toes, hemKeep: body ? 0 : Plugin.CoverHemKeepCm.Value / 100 * scale); }
+                        reach: Plugin.CoverReachCm.Value / 100 * scale, depth: (body ? Plugin.CoverDepthCm.Value / 100 : .035f) * scale, scale: scale, keepBelowY: footY, keepVertex: keep, toeVertex: toes, hemKeep: body ? 0 : Plugin.CoverHemKeepCm.Value / 100 * scale, snapSkin: snap ? skin : null); }
                     finally { Worker.Release(); }
                 }, token);
             }
@@ -135,19 +135,21 @@ internal sealed class CoverageFitter
                 var result = state.Job.GetAwaiter().GetResult();
                 state.Finished = true;
                 state.ReadyAt = Time.unscaledTime + Plugin.RefreshSeconds.Value;
-                if (result.Removed == 0)
+                if (result.Removed == 0 && (result.Offsets == null || !result.Offsets.Any(o => o != default)))
                 {
                     if (state.Replacement != null) { if (target.sharedMesh == state.Replacement) target.sharedMesh = original; Object.Destroy(state.Replacement); state.Replacement = null; }
                     state.Kept = null; state.Offsets = null;
                     return;
                 }
-                if (result.Total == 0 || result.Offsets == null && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
+                if (result.Total == 0 || Plugin.Mode.Value != "Push" && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
                 if (target.sharedMesh != original && target.sharedMesh != state.Replacement) throw new InvalidOperationException("Target mesh changed while computing; result discarded.");
                 if (result.Offsets != null)
                 {
                     // Skip tiny changes: rewriting a mesh with hundreds of blend shapes every scan would cost frame time.
+                    bool snapMode = Plugin.Mode.Value == "Snap";
                     if (state.Offsets != null && state.Offsets.Length == result.Offsets.Length
-                        && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any()) return;
+                        && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any()
+                        && (!snapMode || state.Kept != null && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub])))) return;
                     var rest = original.vertices;
                     if (rest.Length != result.Offsets.Length) throw new InvalidOperationException("Vertex count changed while computing; result discarded.");
                     var moved = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(rest.Length);
@@ -155,29 +157,35 @@ internal sealed class CoverageFitter
                     bool first = state.Replacement == null;
                     if (first) { state.Replacement = Object.Instantiate(original); state.Replacement.name = original.name; }
                     state.Replacement.vertices = moved;
+                    if (snapMode)
+                    {
+                        foreach (int sub in parts)
+                            state.Replacement.SetTriangles(new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>(result.Kept[sub]), sub, false);
+                        state.Kept = result.Kept;
+                    }
                     state.Replacement.RecalculateBounds();
                     target.sharedMesh = state.Replacement;
                     state.Offsets = result.Offsets;
-                    if (first) Plugin.Logger.LogInfo($"Coverage: pushed {result.Removed}/{result.Total} vertices of '{target.name}' under {covers.Length} outer renderer(s).");
+                    if (first) Plugin.Logger.LogInfo($"Coverage ({Plugin.Mode.Value}): {result.Removed}/{result.Total} moved or removed, vertices of '{target.name}' under {covers.Length} outer renderer(s).");
                     return;
                 }
                 if ((result.Added == null || result.Added.Length == 0) && target.sharedMesh == state.Replacement && state.Kept != null
                     && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub]))) return;
-                var previous = state.Replacement;
-                var replacement = Object.Instantiate(original);
+                // Reuse the replacement: instantiating a mesh with hundreds of blend shapes on every change is costly.
+                bool fresh = state.Replacement == null;
+                var replacement = fresh ? Object.Instantiate(original) : state.Replacement;
                 try
                 {
-                    replacement.name = original.name;
-
+                    if (fresh) replacement.name = original.name;
                     foreach (int sub in parts)
                         replacement.SetTriangles(new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>(result.Kept[sub]), sub, false);
                     target.sharedMesh = replacement;
                     state.Replacement = replacement;
                     state.Kept = result.Kept;
                 }
-                catch { Object.Destroy(replacement); throw; }
-                if (previous != null) Object.Destroy(previous);
-                else Plugin.Logger.LogInfo($"Coverage: masked {result.Removed}/{result.Total} triangles of '{target.name}' under {covers.Length} outer renderer(s).");
+                catch { if (fresh) Object.Destroy(replacement); throw; }
+                if (!fresh) return;
+                Plugin.Logger.LogInfo($"Coverage: masked {result.Removed}/{result.Total} triangles of '{target.name}' under {covers.Length} outer renderer(s).");
             }
         }
         catch (Exception ex)
@@ -295,14 +303,16 @@ internal sealed class CoverageFitter
     private static void Release(State s)
     {
         s.Cancel.Cancel();
+        bool restored = true;
         try
         {
             if (s.Target != null && s.Replacement != null && s.Target.sharedMesh == s.Replacement) s.Target.sharedMesh = s.Original;
         }
-        catch (Exception ex) { Plugin.Logger.LogWarning("Could not restore coverage mesh: " + ex.Message); }
+        catch (Exception ex) { restored = false; Plugin.Logger.LogWarning("Could not restore coverage mesh: " + ex.Message); }
         finally
         {
-            if (s.Replacement != null) { Object.Destroy(s.Replacement); s.Replacement = null; }
+            // Destroying a mesh the renderer still points at would make the body invisible.
+            if (s.Replacement != null && restored) { Object.Destroy(s.Replacement); s.Replacement = null; }
             s.Kept = null;
             if (s.Job == null) s.Cancel.Dispose();
             else _ = s.Job.ContinueWith(job => { _ = job.Exception; s.Cancel.Dispose(); }, TaskScheduler.Default);
