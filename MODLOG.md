@@ -120,3 +120,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.5.11 — keep cloth under a thick outer hem; build targets game 0.67
 - Latex jacket over a skirt left a jagged cut under the jacket hem (whole-triangle masking around a flared ribbed hem). New `[Coverage] CoverHemKeepCm` (default 3, scaled by height): a cloth triangle is hidden only if the points 3 cm below its corners are covered too, so a strip under the lower hem of an outer garment stays visible. Does not affect skin; 0 disables.
 - Game moved to `C:\Games\Corrupted Modeling Agency 0.67`; csproj GameDir default updated and the build verified against 0.67 interop. Not verified in game.
+
+## 0.5.12 — restore 3.5 cm cloth window
+- Screenshot of a latex coat on a large bust shows dark flat patches where an inner layer pokes through the coat. 0.5.4 had cut the cloth-under-cloth depth to 1.5 cm to protect insteps; since feet are now exempt (0.5.8-0.5.10) the original 3.5 cm window (scaled by height) is back. Hypothesis from one screenshot; not verified in game.
