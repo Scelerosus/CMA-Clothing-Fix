@@ -19,6 +19,7 @@ internal sealed class CoverageFitter
         internal readonly CancellationTokenSource Cancel = new();
         internal bool Finished;
         internal int[][] Kept;
+        internal V3[] Offsets;
     }
     private readonly Dictionary<int, State> states = new();
     private readonly HashSet<string> warnings = new();
@@ -87,7 +88,7 @@ internal sealed class CoverageFitter
         int id = target.GetInstanceID();
         var original = OriginalMesh(target);
         var coverOriginals = covers.Select(OriginalMesh).ToArray();
-        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
+        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + Plugin.Mode.Value + ":" + Plugin.PushMaxCm.Value + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
             + string.Join(",", covers.Select((r, i) => r.GetInstanceID() + "/" + coverOriginals[i].GetInstanceID() + "/"
                 + string.Join(".", coverParts[i].Select(part => part + "=" + (opacities[i][part]?.Signature ?? "opaque")))));
         wanted.Add(id);
@@ -112,7 +113,15 @@ internal sealed class CoverageFitter
                 var toes = body ? VisibleExtremities(target, original, Toes) : null;
                 var surfaces = covers.Select((r, i) => Capture(r, coverOriginals[i], coverParts[i], opacities[i]).surface).ToArray();
                 var token = state.Cancel.Token;
-                state.Job = Task.Run(async () =>
+                bool push = Plugin.Mode.Value == "Push";
+                var skin = push ? CaptureSkin(target, original) : null;
+                state.Job = push ? Task.Run(async () =>
+                {
+                    await Worker.WaitAsync(token);
+                    try { return CoverageGeometry.Push(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, skin,
+                        Plugin.PushMaxCm.Value / 100 * scale, .002f * scale, token); }
+                    finally { Worker.Release(); }
+                }, token) : Task.Run(async () =>
                 {
                     await Worker.WaitAsync(token);
                     // Cloth under cloth gets the original 3.5 cm window: a bust pushes inner layers out through a coat by centimetres. Feet are exempt separately, so shoe soles no longer matter.
@@ -129,11 +138,29 @@ internal sealed class CoverageFitter
                 if (result.Removed == 0)
                 {
                     if (state.Replacement != null) { if (target.sharedMesh == state.Replacement) target.sharedMesh = original; Object.Destroy(state.Replacement); state.Replacement = null; }
-                    state.Kept = null;
+                    state.Kept = null; state.Offsets = null;
                     return;
                 }
-                if (result.Total == 0 || body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
+                if (result.Total == 0 || result.Offsets == null && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
                 if (target.sharedMesh != original && target.sharedMesh != state.Replacement) throw new InvalidOperationException("Target mesh changed while computing; result discarded.");
+                if (result.Offsets != null)
+                {
+                    // Skip tiny changes: rewriting a mesh with hundreds of blend shapes every scan would cost frame time.
+                    if (state.Offsets != null && state.Offsets.Length == result.Offsets.Length
+                        && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any()) return;
+                    var rest = original.vertices;
+                    if (rest.Length != result.Offsets.Length) throw new InvalidOperationException("Vertex count changed while computing; result discarded.");
+                    var moved = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(rest.Length);
+                    for (int i = 0; i < rest.Length; i++) moved[i] = new Vector3(rest[i].x + result.Offsets[i].X, rest[i].y + result.Offsets[i].Y, rest[i].z + result.Offsets[i].Z);
+                    bool first = state.Replacement == null;
+                    if (first) { state.Replacement = Object.Instantiate(original); state.Replacement.name = original.name; }
+                    state.Replacement.vertices = moved;
+                    state.Replacement.RecalculateBounds();
+                    target.sharedMesh = state.Replacement;
+                    state.Offsets = result.Offsets;
+                    if (first) Plugin.Logger.LogInfo($"Coverage: pushed {result.Removed}/{result.Total} vertices of '{target.name}' under {covers.Length} outer renderer(s).");
+                    return;
+                }
                 if ((result.Added == null || result.Added.Length == 0) && target.sharedMesh == state.Replacement && state.Kept != null
                     && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub]))) return;
                 var previous = state.Replacement;
@@ -204,6 +231,33 @@ internal sealed class CoverageFitter
             parts.Add(i);
         }
         return (parts.ToArray(), opacities);
+    }
+
+    private static CoverageGeometry.SkinInfo CaptureSkin(SkinnedMeshRenderer renderer, Mesh mesh)
+    {
+        var bones = renderer.bones; var bind = mesh.bindposes; var bw = mesh.boneWeights;
+        if (bones == null || bind == null || bones.Length != bind.Length || bw == null || bw.Length != mesh.vertexCount) return null;
+        var linear = new float[bones.Length][];
+        for (int i = 0; i < bones.Length; i++)
+        {
+            if (bones[i] == null) continue;
+            var a = bones[i].localToWorldMatrix; var b = bind[i];
+            // Linear part of bone.localToWorld * bindpose: translation does not affect directions.
+            linear[i] = new[]
+            {
+                a.m00 * b.m00 + a.m01 * b.m10 + a.m02 * b.m20, a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21, a.m00 * b.m02 + a.m01 * b.m12 + a.m02 * b.m22,
+                a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20, a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21, a.m10 * b.m02 + a.m11 * b.m12 + a.m12 * b.m22,
+                a.m20 * b.m00 + a.m21 * b.m10 + a.m22 * b.m20, a.m20 * b.m01 + a.m21 * b.m11 + a.m22 * b.m21, a.m20 * b.m02 + a.m21 * b.m12 + a.m22 * b.m22
+            };
+        }
+        var index = new int[bw.Length * 4]; var weight = new float[bw.Length * 4];
+        for (int i = 0; i < bw.Length; i++)
+        {
+            var w = bw[i];
+            index[i * 4] = w.boneIndex0; index[i * 4 + 1] = w.boneIndex1; index[i * 4 + 2] = w.boneIndex2; index[i * 4 + 3] = w.boneIndex3;
+            weight[i * 4] = w.weight0; weight[i * 4 + 1] = w.weight1; weight[i * 4 + 2] = w.weight2; weight[i * 4 + 3] = w.weight3;
+        }
+        return new CoverageGeometry.SkinInfo(linear, index, weight);
     }
 
     private static (CoverageGeometry.Surface surface, V3[] normals) Capture(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)

@@ -49,6 +49,14 @@ Check(CoverageGeometry.Mask(target,normals,Plane(.02f),new[]{0},CancellationToke
 Check(CoverageGeometry.Mask(target,normals,Quad(-1,-.102f,1,1),new[]{0},CancellationToken.None,.002f).Removed==1
     && CoverageGeometry.Mask(target,normals,Quad(-1,-.102f,1,1),new[]{0},CancellationToken.None,.002f,hemKeep:.03f).Removed==0,
     "cloth just under an outer hem is kept when hemKeep is set");
+CoverageGeometry.SkinInfo Skin(float scale = 1) => new(new[]{new[]{scale,0,0,0,scale,0,0,0,scale}}, new int[12], Enumerable.Range(0,12).Select(i=>i%4==0?1f:0f).ToArray());
+CoverageGeometry.Result Push(CoverageGeometry.Surface outer, float scale = 1) => CoverageGeometry.Push(target,normals,outer,new[]{0},Skin(scale),.03f,.002f,CancellationToken.None);
+var pushed = Push(Plane(-.01f));
+Check(pushed.Removed==3 && Math.Abs(pushed.Offsets[0].Z+.012f)<1e-5f && pushed.Offsets[0].X==0,"vertex poking 1 cm through cloth is pushed 1.2 cm back under it");
+Check(Push(Plane(.02f)).Removed==0,"vertex well beneath cloth is not moved");
+Check(Math.Abs(Push(Plane(.001f)).Offsets[0].Z+.001f)<1e-5f,"vertex too close under cloth is pushed to the 2 mm margin");
+Check(Math.Abs(Push(Plane(-.01f),2).Offsets[0].Z+.006f)<1e-5f,"world push is converted through the skin matrix to rest space");
+Check(Push(Plane(-.05f)).Removed==0,"cloth farther than the push limit is ignored");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

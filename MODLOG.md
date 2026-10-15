@@ -126,3 +126,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.13 — hem keep 3 cm -> 1 cm
 - With a hoodie over a dress, the 3 cm strip kept visible under the hoodie hem let the flared dress show in front of the ribbed hem band (band visible only in pieces). Default `CoverHemKeepCm` is now 1; the config entry is only read once, so existing configs need the value changed by hand. Trade-off: a narrower strip leaves a thinner jag-smoothing margin. Not verified in game.
+
+## 0.6.0 — experimental Push mode
+- New `[Coverage] Mode = Hide|Push` (default Hide, behaviour unchanged). Push never deletes triangles: for every vertex of a masked target it finds the closest outer-garment surface along the vertex normal (either side, within `PushMaxCm`, default 3 cm scaled by height) and, if the vertex pokes out or sits within 2 mm of that surface, moves it back under the surface. World push is converted to mesh rest space through the per-vertex skin matrix captured at bake time, so vertex count, skin weights and blend shapes stay untouched; the replacement mesh is reused and only rewritten when offsets change by more than 1 mm.
+- Known risks: offsets are a snapshot of one pose (stale during fast animation); thin parts are guarded by taking the closest hit, not the deepest. Five managed checks added (push depth, margin, skin matrix, ignore far/beneath cloth). Not verified in game.

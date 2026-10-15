@@ -46,7 +46,9 @@ internal static class CoverageGeometry
         internal int Start, Count;
     }
     internal sealed record NewVertex(int A, int B, int C, Vector3 Weights);
-    internal sealed record Result(int[][] Kept, int Removed, int Total, NewVertex[] Added = null);
+    internal sealed record Result(int[][] Kept, int Removed, int Total, NewVertex[] Added = null, Vector3[] Offsets = null);
+    // BoneLinear[i] is the 3x3 world-from-rest linear part (row-major) of bone i; Index/Weight hold 4 influences per vertex.
+    internal sealed record SkinInfo(float[][] BoneLinear, int[] Index, float[] Weight);
 
     internal static Surface Combine(IEnumerable<Surface> surfaces, CancellationToken cancel = default)
     {
@@ -70,9 +72,8 @@ internal static class CoverageGeometry
         return new Surface(vertices.ToArray(), triangles.ToArray(), uv.ToArray(), opacities.ToArray(),minimumY.ToArray());
     }
 
-    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null, float hemKeep = 0)
+    private static (Triangle[] triangles, Node root) BuildBvh(Surface cover, CancellationToken cancel)
     {
-        cancel.ThrowIfCancellationRequested();
         var coverTriangles = new List<Triangle>();
         for (int part = 0; part < cover.Triangles.Length; part++)
         {
@@ -89,7 +90,7 @@ internal static class CoverageGeometry
             }
         }
         var triangles = coverTriangles.ToArray();
-        if (triangles.Length == 0) return new Result(target.Triangles, 0, 0);
+        if (triangles.Length == 0) return (triangles, null);
         Node Build(int start, int count)
         {
             cancel.ThrowIfCancellationRequested();
@@ -105,6 +106,14 @@ internal static class CoverageGeometry
             return node;
         }
         var root = Build(0, triangles.Length);
+        return (triangles, root);
+    }
+
+    internal static Result Mask(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, CancellationToken cancel, float edgeInset = 0, bool bodyJewellery = false, bool refine = false, bool skin = false, float reach = .055f, float depth = .035f, float scale = 1, float keepBelowY = float.NegativeInfinity, bool[] keepVertex = null, bool[] toeVertex = null, float hemKeep = 0)
+    {
+        cancel.ThrowIfCancellationRequested();
+        var (triangles, root) = BuildBvh(cover, cancel);
+        if (triangles.Length == 0) return new Result(target.Triangles, 0, 0);
         float cast = reach + depth;
         bool Hit(Node node, Vector3 origin, Vector3 direction, float distance = -1, float targetY = float.PositiveInfinity)
         {
@@ -217,6 +226,85 @@ internal static class CoverageGeometry
             kept[sub] = output.SequenceEqual(source) ? source : output.ToArray();
         }
         return new Result(kept, removed, total, added.ToArray());
+    }
+
+
+    // Instead of deleting triangles, move target vertices that poke out through an outer garment back under its surface.
+    // Offsets are in mesh rest space; topology, weights and blend shapes are untouched.
+    internal static Result Push(Surface target, Vector3[] normals, Surface cover, int[] targetSubmeshes, SkinInfo skin, float maxPush, float margin, CancellationToken cancel)
+    {
+        cancel.ThrowIfCancellationRequested();
+        var (triangles, root) = BuildBvh(cover, cancel);
+        int n = target.Vertices.Length;
+        if (triangles.Length == 0 || normals.Length != n || skin == null || skin.Index.Length != n * 4) return new Result(target.Triangles, 0, 0);
+        var used = new bool[n];
+        foreach (int sub in targetSubmeshes) foreach (int index in target.Triangles[sub]) used[index] = true;
+        var offsets = new Vector3[n];
+        int moved = 0, total = 0;
+        for (int v = 0; v < n; v++)
+        {
+            if (!used[v]) continue;
+            total++;
+            if ((v & 255) == 0) cancel.ThrowIfCancellationRequested();
+            float length = normals[v].LengthSquared();
+            if (!float.IsFinite(length) || length < 1e-12f) continue;
+            var normal = normals[v] / MathF.Sqrt(length);
+            var p = target.Vertices[v];
+            // The closest cover surface along the normal, either side of the vertex, ignoring far sides of thin parts such as fingers.
+            float best = float.NaN;
+            NearestHit(root, triangles, p + normal * maxPush, -normal, 2 * maxPush, maxPush, p.Y, ref best);
+            if (float.IsNaN(best)) continue;
+            float need = best - maxPush + margin;
+            if (need <= 0) continue;
+            if (!Unskin(skin, v, -normal * need, out var rest)) continue;
+            offsets[v] = rest; moved++;
+        }
+        return new Result(target.Triangles, moved, total, null, offsets);
+    }
+
+    private static bool Unskin(SkinInfo skin, int vertex, Vector3 world, out Vector3 rest)
+    {
+        rest = default;
+        Span<float> m = stackalloc float[9];
+        for (int k = 0; k < 4; k++)
+        {
+            float w = skin.Weight[vertex * 4 + k]; int bone = skin.Index[vertex * 4 + k];
+            if (w <= 0 || bone < 0 || bone >= skin.BoneLinear.Length || skin.BoneLinear[bone] == null) continue;
+            for (int i = 0; i < 9; i++) m[i] += w * skin.BoneLinear[bone][i];
+        }
+        float c00 = m[4] * m[8] - m[5] * m[7], c01 = m[5] * m[6] - m[3] * m[8], c02 = m[3] * m[7] - m[4] * m[6];
+        float det = m[0] * c00 + m[1] * c01 + m[2] * c02;
+        if (!float.IsFinite(det) || Math.Abs(det) < 1e-9f) return false;
+        float inv = 1 / det;
+        rest = new Vector3(
+            (c00 * world.X + (m[2] * m[7] - m[1] * m[8]) * world.Y + (m[1] * m[5] - m[2] * m[4]) * world.Z) * inv,
+            (c01 * world.X + (m[0] * m[8] - m[2] * m[6]) * world.Y + (m[2] * m[3] - m[0] * m[5]) * world.Z) * inv,
+            (c02 * world.X + (m[1] * m[6] - m[0] * m[7]) * world.Y + (m[0] * m[4] - m[1] * m[3]) * world.Z) * inv);
+        return float.IsFinite(rest.X) && float.IsFinite(rest.Y) && float.IsFinite(rest.Z);
+    }
+
+    private static void NearestHit(Node node, Triangle[] triangles, Vector3 o, Vector3 d, float distance, float wanted, float targetY, ref float best)
+    {
+        if (!BoxHit(node.Min, node.Max, o, d, distance)) return;
+        if (node.Left != null) { NearestHit(node.Left, triangles, o, d, distance, wanted, targetY, ref best); NearestHit(node.Right, triangles, o, d, distance, wanted, targetY, ref best); return; }
+        for (int i = node.Start; i < node.Start + node.Count; i++)
+            if (targetY >= triangles[i].MinimumTargetY && TriangleRay(triangles[i], o, d, distance, out float t)
+                && (float.IsNaN(best) || Math.Abs(t - wanted) < Math.Abs(best - wanted))) best = t;
+    }
+
+    private static bool TriangleRay(Triangle tri, Vector3 o, Vector3 d, float distance, out float t)
+    {
+        t = 0;
+        var e1 = tri.B - tri.A; var e2 = tri.C - tri.A;
+        var h = Vector3.Cross(d, e2); float determinant = Vector3.Dot(e1, h);
+        if (Math.Abs(determinant) < 1e-9f) return false;
+        float inv = 1 / determinant;
+        var s = o - tri.A; float u = inv * Vector3.Dot(s, h);
+        if (u < -1e-5f || u > 1 + 1e-5f) return false;
+        var q = Vector3.Cross(s, e1); float v = inv * Vector3.Dot(d, q);
+        if (v < -1e-5f || u + v > 1 + 1e-5f) return false;
+        t = inv * Vector3.Dot(e2, q);
+        return t >= 0 && t <= distance && (tri.Opacity == null || tri.Opacity.Covers(tri.UVA * (1 - u - v) + tri.UVB * u + tri.UVC * v));
     }
 
     private static bool BoxHit(Vector3 min, Vector3 max, Vector3 o, Vector3 d, float distance)
