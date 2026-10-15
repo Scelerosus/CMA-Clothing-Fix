@@ -123,3 +123,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.5.12 — restore 3.5 cm cloth window
 - Screenshot of a latex coat on a large bust shows dark flat patches where an inner layer pokes through the coat. 0.5.4 had cut the cloth-under-cloth depth to 1.5 cm to protect insteps; since feet are now exempt (0.5.8-0.5.10) the original 3.5 cm window (scaled by height) is back. Hypothesis from one screenshot; not verified in game.
+
+## 0.5.13 — hem keep 3 cm -> 1 cm
+- With a hoodie over a dress, the 3 cm strip kept visible under the hoodie hem let the flared dress show in front of the ribbed hem band (band visible only in pieces). Default `CoverHemKeepCm` is now 1; the config entry is only read once, so existing configs need the value changed by hand. Trade-off: a narrower strip leaves a thinner jag-smoothing margin. Not verified in game.

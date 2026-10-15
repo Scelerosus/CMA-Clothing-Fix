@@ -28,7 +28,7 @@ public sealed class Plugin : BasePlugin
         RefreshSeconds = Config.Bind("General", "RefreshSeconds", 2f, new ConfigDescription("Seconds between scheduled automatic pose updates.", new AcceptableValueRange<float>(2f, 30f)));
         CoverReachCm = Config.Bind("Coverage", "CoverReachCm", 2f, new ConfigDescription("How far above the skin (cm, for a 170 cm character) a garment may float and still hide skin beneath it. Lower keeps more skin near loose cups.", new AcceptableValueRange<float>(.5f, 6f)));
         CoverDepthCm = Config.Bind("Coverage", "CoverDepthCm", 5f, new ConfigDescription("How deep below the skin (cm, for a 170 cm character) a garment may sink and still hide the skin over it. Raise for very large busts.", new AcceptableValueRange<float>(1f, 10f)));
-        CoverHemKeepCm = Config.Bind("Coverage", "CoverHemKeepCm", 3f, new ConfigDescription("Cloth this far (cm, for a 170 cm character) below the lower hem of an outer garment is left visible, which avoids jagged cuts under thick hems. 0 disables.", new AcceptableValueRange<float>(0f, 8f)));
+        CoverHemKeepCm = Config.Bind("Coverage", "CoverHemKeepCm", 1f, new ConfigDescription("Cloth this far (cm, for a 170 cm character) below the lower hem of an outer garment is left visible, which avoids jagged cuts under thick hems. 0 disables.", new AcceptableValueRange<float>(0f, 8f)));
         MenuKey = Config.Bind("Keys", "Menu", KeyCode.Slash, "Open clipping menu.");
         RulesPath = Path.Combine(Paths.ConfigPath, "CMAClothingFix.rules.json");
         ReportsPath = Path.Combine(Paths.BepInExRootPath, "CMAClothingFix-reports");
