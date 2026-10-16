@@ -26,6 +26,7 @@ internal sealed class CoverageFitter
     private readonly HashSet<string> warnings = new();
     private readonly HashSet<string> loggedOutfits = new(), loggedOutfitLines = new(), shadersProbed = new();
     private readonly Dictionary<int, (Material material, float[] amplitude)> skinDisplacement = new();
+    private readonly HashSet<SkinnedMeshRenderer> hiddenJewellery = new();
     private static readonly string[] TessAmplitudes = { "_HeightTessAmplitude0", "_HeightTessAmplitude1", "_HeightTessAmplitude2", "_HeightTessAmplitude3" };
     private readonly AlphaCoverage alpha = new();
     internal int ActiveMasks => states.Values.Count(s => s.Replacement != null);
@@ -62,7 +63,11 @@ internal sealed class CoverageFitter
             float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .14f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
             bool inflating = Plugin.Mode.Value == "Inflate";
-            if (inflating) Inflate(outfit, garments, coverage, bodies, signature, scale, footY, wanted, ref capturesLeft);
+            if (inflating)
+            {
+                Inflate(outfit, garments, coverage, bodies, signature, scale, footY, wanted, ref capturesLeft);
+                UpdateJewellery(outfit, garments);
+            }
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
                 if (!target.enabled || !target.gameObject.activeInHierarchy || target.forceRenderingOff) continue;
@@ -72,8 +77,8 @@ internal sealed class CoverageFitter
                 bool body = owner == "@body" && materials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal));
                 if (!body && !garments.Contains(target)) continue;
                 var item = body ? null : outfit.Items[owner];
-                // While inflating, body jewellery is pushed back under the outer garment instead (a barbell must not lift a dress by centimetres).
-                if (inflating && (body || item.Kind is not (ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory))) continue;
+                // While inflating, skin and garments are handled by Inflate and body jewellery by UpdateJewellery.
+                if (inflating) continue;
                 var parts = Enumerable.Range(0, mesh.subMeshCount).Where(i => mesh.GetTopology(i) == MeshTopology.Triangles
                     && (!body || i < materials.Length && materials[i] != null &&
                         (materials[i].name.StartsWith("Skin_Body", StringComparison.Ordinal) || materials[i].name.StartsWith("Pezones", StringComparison.Ordinal)))).ToArray();
@@ -116,6 +121,35 @@ internal sealed class CoverageFitter
                 for (int i = 0; i < TessAmplitudes.Length; i++)
                     if (!float.IsNaN(saved.amplitude[i])) material.SetFloat(TessAmplitudes[i], saved.amplitude[i] * scale);
             }
+    }
+
+    // Body jewellery (a barbell through the nipple) cannot be measured reliably: its vertex normals point sideways, so rays miss the garment and
+    // bits poke out. Instead use the game's own coverage data: while a garment worn over it declares the region covered, the piece is not drawn.
+    private void UpdateJewellery(Outfit outfit, SkinnedMeshRenderer[] garments)
+    {
+        foreach (var renderer in outfit.Renderers)
+        {
+            string owner = outfit.OwnerOf(renderer);
+            if (owner == "@body" || !outfit.Items.TryGetValue(owner, out var item) || !item.Visible) continue;
+            bool upper = item.Kind == ClothingOrder.Kind.UpperUnderwearAccessory;
+            if (!upper && item.Kind != ClothingOrder.Kind.LowerUnderwearAccessory) continue;
+            string[] regions = upper ? new[] { "pezones" } : new[] { "vaginaHole", "labiosVaginales" };
+            bool covered = garments.Any(g =>
+            {
+                if (g == renderer) return false;
+                var outer = outfit.Items[outfit.OwnerOf(g)];
+                return outer.Coverage != null && regions.Any(region => outer.Coverage.Contains(region, StringComparison.Ordinal))
+                    && ClothingOrder.Covers(item.Layer, (int)item.Flags, item.Kind, outer.Layer, (int)outer.Flags, outer.Kind);
+            });
+            if (covered && !renderer.forceRenderingOff) { renderer.forceRenderingOff = true; hiddenJewellery.Add(renderer); }
+            else if (!covered && hiddenJewellery.Remove(renderer)) renderer.forceRenderingOff = false;
+        }
+    }
+
+    private void RestoreJewellery()
+    {
+        foreach (var renderer in hiddenJewellery) if (renderer != null) renderer.forceRenderingOff = false;
+        hiddenJewellery.Clear();
     }
 
     private void RestoreSkinDisplacement()
@@ -614,6 +648,7 @@ internal sealed class CoverageFitter
         alpha.Clear();
         meshData.Clear(); skinChecked.Clear(); skinBad.Clear();
         RestoreSkinDisplacement();
+        RestoreJewellery();
     }
     private static void Release(State s)
     {
