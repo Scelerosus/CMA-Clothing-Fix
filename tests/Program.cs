@@ -73,6 +73,9 @@ var smoothed = CoverageGeometry.Inflate(ramp,normals,Plane(.005f),new[]{0},Skin(
 Check(Math.Abs(smoothed.Offsets[0].Z-.007f)<1e-5f && Math.Abs(smoothed.Offsets[1].Z-.0049f)<1e-5f && Math.Abs(smoothed.Offsets[2].Z-.0049f)<1e-5f,
     "lift spreads to neighbours with falloff and never reduces the needed lift");
 Check(CoverageGeometry.Inflate(ramp,normals,Plane(.005f),new[]{0},Skin(),.03f,.002f,CancellationToken.None,0).Offsets[1]==Vector3.Zero,"smoothing can be switched off");
+var tightPull = CoverageGeometry.Inflate(target,normals,Plane(-.01f),new[]{0},Skin(),.03f,.001f,CancellationToken.None,0,.02f);
+Check(Math.Abs(tightPull.Offsets[0].Z+.009f)<1e-5f,"tight garment hovering 1 cm above the skin is pulled in to the margin");
+Check(CoverageGeometry.Inflate(target,normals,Plane(-.03f),new[]{0},Skin(),.03f,.001f,CancellationToken.None,0,.02f).Removed==0,"tight pull ignores garments hovering beyond its reach");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

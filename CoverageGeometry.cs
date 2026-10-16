@@ -297,7 +297,7 @@ internal static class CoverageGeometry
 
     // Mirror of Push for garments: the body is always the innermost layer, so a garment vertex that sank below the skin surface
     // is moved out along the skin's outward normal until it sits `margin` above it. No layer rules and nothing is deleted.
-    internal static Result Inflate(Surface target, Vector3[] normals, Surface body, int[] targetSubmeshes, SkinInfo skin, float maxPush, float margin, CancellationToken cancel, int smoothing = 3)
+    internal static Result Inflate(Surface target, Vector3[] normals, Surface body, int[] targetSubmeshes, SkinInfo skin, float maxPush, float margin, CancellationToken cancel, int smoothing = 3, float tightReach = 0)
     {
         cancel.ThrowIfCancellationRequested();
         var (triangles, root) = BuildBvh(body, cancel);
@@ -327,7 +327,9 @@ internal static class CoverageGeometry
             // Signed height of the vertex above the skin surface plane at the hit point.
             float above = -(best - maxPush) * Vector3.Dot(hit, normal);
             float need = margin - above;
-            if (need <= 0 || need > maxPush + margin) continue;
+            // Tight garments (hosiery, underwear) are also pulled in to the margin when they hover within tightReach of the skin.
+            if (need > maxPush + margin || need <= 0 && !(tightReach > 0 && -need <= tightReach)) continue;
+            if (need == 0) continue;
             world[v] = hit * need;
         }
         // Spread each lift to neighbouring vertices with a 0.7 falloff per ring. Only larger values replace smaller ones,

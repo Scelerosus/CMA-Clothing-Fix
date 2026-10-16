@@ -147,3 +147,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.7.1 — Inflate smoothing and inner-layer references
 - Inflate lift now spreads to neighbouring vertices (0.7 falloff per ring, 3 passes, larger value wins so required lift is never reduced) to remove stair steps where lifted and untouched vertices meet (hoodie underbust: only 274 of 117,746 vertices moved, which made a sawtooth).
 - References for a garment are now the skin plus every garment worn underneath it by the game layer order (ClothingOrder.Covers); an outer garment is lifted over inner layers instead of hiding them. Jewellery/accessories excluded. Two new managed checks. Not verified in game.
+
+## 0.7.2 — tight hosiery and larger bust window
+- Stockings sat 1.5 mm above the skin and looked loose. Garments on layer <= 1 (hosiery, underwear) now use a 0.7 mm margin and are also pulled in to it when they hover within 1.5 cm above the skin (scaled). Other garments use a 3 mm margin because the LayeredLitTessellation skin shader displaces the surface a few millimetres beyond the mesh, which showed as skin through thin cloth on the bust.
+- `PushMaxCm` default 3 -> 5 so deeper bust sinks are caught; existing configs keep their value (cfg edited by hand). Two managed checks added. Not verified in game.

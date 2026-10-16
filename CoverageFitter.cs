@@ -124,18 +124,21 @@ internal sealed class CoverageFitter
                 if (cover.parts.Length == 0 || !OriginalMesh(inner).isReadable) continue;
                 refs.Add(inner); refParts.Add(cover.parts); refOpacity.Add(cover.opacities);
             }
+            // Innermost layer (hosiery, underwear) should hug the skin; everything else gets a larger margin because the
+            // tessellated skin shader displaces the surface a few millimetres beyond the mesh.
+            bool tight = item.Layer <= 1;
             Request(scale, float.NegativeInfinity, target, refs.ToArray(), refParts.ToArray(), refOpacity.ToArray(),
-                parts, signature, wanted, false, false, null, ref capturesLeft);
+                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .0007f * scale : .003f * scale, tight ? .015f * scale : 0);
         }
     }
 
     private void Request(float scale, float footY, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
-        int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft)
+        int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft, float inflateMargin = 0, float tightReach = 0)
     {
         int id = target.GetInstanceID();
         var original = OriginalMesh(target);
         var coverOriginals = covers.Select(OriginalMesh).ToArray();
-        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + Plugin.Mode.Value + ":" + Plugin.PushMaxCm.Value + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
+        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + Plugin.Mode.Value + ":" + Plugin.PushMaxCm.Value + ":" + inflateMargin + "/" + tightReach + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
             + string.Join(",", covers.Select((r, i) => r.GetInstanceID() + "/" + coverOriginals[i].GetInstanceID() + "/"
                 + string.Join(".", coverParts[i].Select(part => part + "=" + (opacities[i][part]?.Signature ?? "opaque")))));
         wanted.Add(id);
@@ -166,7 +169,7 @@ internal sealed class CoverageFitter
                 {
                     await Worker.WaitAsync(token);
                     try { return CoverageGeometry.Inflate(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, skin,
-                        Plugin.PushMaxCm.Value / 100 * scale, .0015f * scale, token); }
+                        Plugin.PushMaxCm.Value / 100 * scale, inflateMargin, token, 3, tightReach); }
                     finally { Worker.Release(); }
                 }, token) : push ? Task.Run(async () =>
                 {
