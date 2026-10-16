@@ -11,7 +11,7 @@ namespace CMAClothingFix;
 public sealed class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
-    internal const string Version = "0.9.3"; // keep equal to <Version> in the csproj
+    internal const string Version = "0.9.4"; // keep equal to <Version> in the csproj
     internal static ConfigEntry<bool> Enabled, Diagnostics;
     internal static ConfigEntry<bool> ExperimentalCoverage;
     internal static ConfigEntry<float> RefreshSeconds, CoverReachCm, CoverDepthCm, CoverHemKeepCm, PushMaxCm;
@@ -33,7 +33,7 @@ public sealed class Plugin : BasePlugin
         CoverHemKeepCm = Config.Bind("Coverage", "CoverHemKeepCm", 1f, new ConfigDescription("Cloth this far (cm, for a 170 cm character) below the lower hem of an outer garment is left visible, which avoids jagged cuts under thick hems. 0 disables.", new AcceptableValueRange<float>(0f, 8f)));
         Mode = Config.Bind("Coverage", "Mode", "Hide", new ConfigDescription("Hide deletes covered triangles (jagged edges possible). Snap = Hide plus sliding boundary vertices to the garment edge for smooth cuts. Inflate keeps all geometry and lifts garments that sank into the skin out to just above it (experimental, no layer rules). Push keeps all geometry and moves vertices that poke through an outer garment back under it (experimental).", new AcceptableValueList<string>("Hide", "Snap", "Push", "Inflate")));
         PushMaxCm = Config.Bind("Coverage", "PushMaxCm", 5f, new ConfigDescription("Push mode: largest poke-through (cm, for a 170 cm character) that is pushed back. Larger pokes are ignored.", new AcceptableValueRange<float>(.5f, 8f)));
-        Skinning = Config.Bind("Coverage", "Skinning", "Check", new ConfigDescription("How garment and skin surfaces are measured: BakeMesh = native bake (reference), Managed = plain C# skinning without a native bake, Check = bake and compare with managed, logging the error.", new AcceptableValueList<string>("BakeMesh", "Managed", "Check")));
+        Skinning = Config.Bind("Coverage", "Skinning", "Managed", new ConfigDescription("How garment and skin surfaces are measured: BakeMesh = native bake (reference), Managed = plain C# skinning without a native bake (each renderer is checked once against BakeMesh and falls back if it differs by more than 1 mm), Check = bake every time and compare with managed, logging the error.", new AcceptableValueList<string>("BakeMesh", "Managed", "Check")));
         MenuKey = Config.Bind("Keys", "Menu", KeyCode.Slash, "Open clipping menu.");
         RulesPath = Path.Combine(Paths.ConfigPath, "CMAClothingFix.rules.json");
         ReportsPath = Path.Combine(Paths.BepInExRootPath, "CMAClothingFix-reports");

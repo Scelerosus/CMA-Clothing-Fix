@@ -333,11 +333,15 @@ internal sealed class CoverageFitter
 
     private readonly Dictionary<(int, int, int), Skinning.MeshData> meshData = new();
     private readonly Dictionary<int, float> skinChecked = new();
+    private readonly HashSet<int> skinBad = new();
 
     // BakeMesh stays as the reference; Managed computes the same surface in plain C# (no mesh swap, no native bake); Check runs both and logs the difference.
     private (CoverageGeometry.Surface surface, V3[] normals) Capture(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)
     {
         string kind = Plugin.Skinning.Value;
+        int rendererId = renderer.GetInstanceID();
+        // Managed is verified once per renderer against BakeMesh; a renderer that does not match within 1 mm keeps the native path.
+        if (kind == "Managed" && (skinBad.Contains(rendererId) || !skinChecked.ContainsKey(rendererId))) kind = skinBad.Contains(rendererId) ? "BakeMesh" : "Check";
         if (kind == "BakeMesh") return CaptureBaked(renderer, original, parts, opacities);
         // Check only pays for the managed surface when its result will actually be logged.
         if (kind == "Check" && skinChecked.TryGetValue(renderer.GetInstanceID(), out float lastCheck) && Time.unscaledTime < lastCheck + 30) return CaptureBaked(renderer, original, parts, opacities);
@@ -507,6 +511,11 @@ internal sealed class CoverageFitter
         for (int i = 0; i < error.Length; i++) if (error[i] > 1) { bad++; if (touched[i]) badOnShape++; }
         var sorted = (float[])error.Clone();
         Array.Sort(sorted);
+        if (sorted[(int)((sorted.Length - 1) * .999)] > 1f)
+        {
+            skinBad.Add(renderer.GetInstanceID());
+            Plugin.Logger.LogWarning($"Managed skinning for '{renderer.name}' differs from BakeMesh by more than 1 mm; BakeMesh stays in use for it.");
+        }
         Plugin.Logger.LogInfo($"Skinning check '{renderer.name}': {error.Length} vertices, error mm mean {error.Average():F3}, p99.9 {sorted[(int)((sorted.Length - 1) * .999)]:F3}, max {sorted[^1]:F3}; over 1 mm: {bad} ({badOnShape} on blend-shape vertices, {activeShapes} shapes active).");
         if (bad > 0 && probed.Add(renderer.GetInstanceID())) ProbeShapes(renderer, original, meshData.GetValueOrDefault((original.GetInstanceID(), original.vertexCount, original.blendShapeCount)), baked);
     }
@@ -542,7 +551,7 @@ internal sealed class CoverageFitter
         foreach (var state in states.Values) Release(state);
         states.Clear();
         alpha.Clear();
-        meshData.Clear(); skinChecked.Clear();
+        meshData.Clear(); skinChecked.Clear(); skinBad.Clear();
     }
     private static void Release(State s)
     {

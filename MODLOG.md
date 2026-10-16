@@ -176,3 +176,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.9.3 — full bone influences in managed skinning
 - 0.9.2 probe: leaving out any single blend shape never removes the G-string/dress mismatch (BODY_Fat p even helps), weights clamped to 0..100 change nothing, and BODY_Fat p touches 4,499 of 4,514 dress vertices, so the earlier blend-shape correlation was meaningless. Remaining hypothesis: Unity skins with all influences (QualitySettings.skinWeights = Unlimited) while the managed path used the legacy 4-influence boneWeights.
 - 0.9.3 reads GetBonesPerVertex/GetAllBoneWeights into a variable-length layout (Skinning.MeshData.Start) and applies the renderer quality or QualitySettings.skinWeights (1, 2, 4 or 255). The probe logs the quality values and the error for 4 influences vs all influences. One new managed check. Not verified in game.
+
+## 0.9.4 — Managed skinning is the default
+- 0.9.3 Check results: body, G-string, dress, stockings, bracelet, piercing and shoes match BakeMesh to <= 0.015 mm (p99.9) / 0.015 mm (max); the 0.9.0-0.9.2 mismatch was the 4-influence limit (Unlimited skin weights). The hoodie was not worn in that session.
+- Default `Skinning = Managed`: no native bake and no sharedMesh swap per capture. Each renderer is compared with BakeMesh once on first use; if p99.9 exceeds 1 mm it is added to a bad list, a warning is logged and BakeMesh is used for it from then on. `Check` and `BakeMesh` remain available. Not yet verified for the hoodie in game.
