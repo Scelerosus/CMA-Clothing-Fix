@@ -57,7 +57,7 @@ internal sealed class CoverageFitter
             // shortcut: assumes a standing pose; lying poses stop masking skin entirely.
             float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .14f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
-            if (Plugin.Mode.Value == "Inflate") { Inflate(outfit, garments, bodies, signature, scale, wanted, ref capturesLeft); continue; }
+            if (Plugin.Mode.Value == "Inflate") { Inflate(outfit, garments, coverage, bodies, signature, scale, wanted, ref capturesLeft); continue; }
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
                 if (!target.enabled || !target.gameObject.activeInHierarchy || target.forceRenderingOff) continue;
@@ -90,7 +90,7 @@ internal sealed class CoverageFitter
     }
 
     // Inflate mode: the body skin is the fixed reference and every worn garment is lifted off it; the body itself is never touched.
-    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, SkinnedMeshRenderer[] bodies, string signature, float scale, HashSet<int> wanted, ref int capturesLeft)
+    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, Dictionary<int, (int[] parts, CoverageGeometry.Opacity[] opacities)> coverage, SkinnedMeshRenderer[] bodies, string signature, float scale, HashSet<int> wanted, ref int capturesLeft)
     {
         var skin = bodies.Where(r => r.enabled && OriginalMesh(r) != null && OriginalMesh(r).isReadable
             && r.sharedMaterials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal))).FirstOrDefault();
@@ -109,7 +109,22 @@ internal sealed class CoverageFitter
             if (!mesh.isReadable) continue;
             var parts = Enumerable.Range(0, mesh.subMeshCount).Where(i => mesh.GetTopology(i) == MeshTopology.Triangles).ToArray();
             if (parts.Length == 0) continue;
-            Request(scale, float.NegativeInfinity, target, new[] { skin }, new[] { skinParts }, new[] { new CoverageGeometry.Opacity[skinMesh.subMeshCount] },
+            // References: the skin plus every garment worn underneath this one (by the game's own layer order), so an outer garment
+            // is lifted over inner layers instead of deleting them.
+            var refs = new List<SkinnedMeshRenderer> { skin };
+            var refParts = new List<int[]> { skinParts };
+            var refOpacity = new List<CoverageGeometry.Opacity[]> { new CoverageGeometry.Opacity[skinMesh.subMeshCount] };
+            foreach (var inner in garments)
+            {
+                if (inner == target) continue;
+                var below = outfit.Items[outfit.OwnerOf(inner)];
+                if (below.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory or ClothingOrder.Kind.Accessories) continue;
+                if (!ClothingOrder.Covers(below.Layer, (int)below.Flags, below.Kind, item.Layer, (int)item.Flags, item.Kind)) continue;
+                var cover = coverage[inner.GetInstanceID()];
+                if (cover.parts.Length == 0 || !OriginalMesh(inner).isReadable) continue;
+                refs.Add(inner); refParts.Add(cover.parts); refOpacity.Add(cover.opacities);
+            }
+            Request(scale, float.NegativeInfinity, target, refs.ToArray(), refParts.ToArray(), refOpacity.ToArray(),
                 parts, signature, wanted, false, false, null, ref capturesLeft);
         }
     }

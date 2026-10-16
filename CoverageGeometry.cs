@@ -297,7 +297,7 @@ internal static class CoverageGeometry
 
     // Mirror of Push for garments: the body is always the innermost layer, so a garment vertex that sank below the skin surface
     // is moved out along the skin's outward normal until it sits `margin` above it. No layer rules and nothing is deleted.
-    internal static Result Inflate(Surface target, Vector3[] normals, Surface body, int[] targetSubmeshes, SkinInfo skin, float maxPush, float margin, CancellationToken cancel)
+    internal static Result Inflate(Surface target, Vector3[] normals, Surface body, int[] targetSubmeshes, SkinInfo skin, float maxPush, float margin, CancellationToken cancel, int smoothing = 3)
     {
         cancel.ThrowIfCancellationRequested();
         var (triangles, root) = BuildBvh(body, cancel);
@@ -305,8 +305,8 @@ internal static class CoverageGeometry
         if (triangles.Length == 0 || normals.Length != n || skin == null || skin.Index.Length != n * 4) return new Result(target.Triangles, 0, 0);
         var used = new bool[n];
         foreach (int sub in targetSubmeshes) foreach (int index in target.Triangles[sub]) used[index] = true;
-        var offsets = new Vector3[n];
-        int moved = 0, total = 0;
+        var world = new Vector3[n];
+        int total = 0;
         for (int v = 0; v < n; v++)
         {
             if (!used[v]) continue;
@@ -328,9 +328,34 @@ internal static class CoverageGeometry
             float above = -(best - maxPush) * Vector3.Dot(hit, normal);
             float need = margin - above;
             if (need <= 0 || need > maxPush + margin) continue;
-            if (!Unskin(skin, v, hit * need, out var rest)) continue;
-            offsets[v] = rest; moved++;
+            world[v] = hit * need;
         }
+        // Spread each lift to neighbouring vertices with a 0.7 falloff per ring. Only larger values replace smaller ones,
+        // so a vertex never gets less than it needs; this removes stair steps where lifted and untouched vertices meet.
+        if (smoothing > 0)
+        {
+            var edges = new List<(int a, int b)>();
+            foreach (int sub in targetSubmeshes)
+            {
+                var t = target.Triangles[sub];
+                for (int i = 0; i + 2 < t.Length; i += 3) { edges.Add((t[i], t[i + 1])); edges.Add((t[i + 1], t[i + 2])); edges.Add((t[i + 2], t[i])); }
+            }
+            for (int pass = 0; pass < smoothing; pass++)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var next = (Vector3[])world.Clone();
+                foreach (var (a, b) in edges)
+                {
+                    var fromB = world[b] * .7f; if (fromB.LengthSquared() > next[a].LengthSquared()) next[a] = fromB;
+                    var fromA = world[a] * .7f; if (fromA.LengthSquared() > next[b].LengthSquared()) next[b] = fromA;
+                }
+                world = next;
+            }
+        }
+        var offsets = new Vector3[n];
+        int moved = 0;
+        for (int v = 0; v < n; v++)
+            if (world[v] != Vector3.Zero && Unskin(skin, v, world[v], out var rest)) { offsets[v] = rest; moved++; }
         return new Result(target.Triangles, moved, total, null, offsets);
     }
 

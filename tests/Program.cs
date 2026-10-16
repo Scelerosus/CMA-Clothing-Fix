@@ -68,6 +68,11 @@ Check(Inflate(Plane(-.02f)).Removed==0,"garment well above the skin is not moved
 Check(Math.Abs(Inflate(Plane(-.001f)).Offsets[0].Z-.001f)<1e-5f,"garment just above the skin is lifted to the margin");
 Check(Inflate(Plane(.01f),Enumerable.Repeat(-Vector3.UnitZ,3).ToArray()).Removed==0,"inverted garment normals are left alone");
 Check(Inflate(Plane(.05f)).Removed==0,"skin farther than the push limit is ignored");
+var ramp = new CoverageGeometry.Surface(new[]{new Vector3(-.1f,-.1f,0),new Vector3(.1f,-.1f,.03f),new Vector3(0,.1f,.03f)},new[]{new[]{0,1,2}});
+var smoothed = CoverageGeometry.Inflate(ramp,normals,Plane(.005f),new[]{0},Skin(),.03f,.002f,CancellationToken.None);
+Check(Math.Abs(smoothed.Offsets[0].Z-.007f)<1e-5f && Math.Abs(smoothed.Offsets[1].Z-.0049f)<1e-5f && Math.Abs(smoothed.Offsets[2].Z-.0049f)<1e-5f,
+    "lift spreads to neighbours with falloff and never reduces the needed lift");
+Check(CoverageGeometry.Inflate(ramp,normals,Plane(.005f),new[]{0},Skin(),.03f,.002f,CancellationToken.None,0).Offsets[1]==Vector3.Zero,"smoothing can be switched off");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();
