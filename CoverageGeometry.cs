@@ -307,6 +307,22 @@ internal static class CoverageGeometry
         foreach (int sub in targetSubmeshes) foreach (int index in target.Triangles[sub]) used[index] = true;
         var world = new Vector3[n];
         int total = 0;
+        // UV and hard-edge seams duplicate vertices at the same position; every copy must receive the same lift or the seam cracks open.
+        var group = new int[n]; var firstAt = new Dictionary<(int, int, int), int>();
+        for (int v = 0; v < n; v++)
+        {
+            if (!used[v]) { group[v] = -1; continue; }
+            var q = target.Vertices[v];
+            var key = ((int)MathF.Round(q.X * 20000), (int)MathF.Round(q.Y * 20000), (int)MathF.Round(q.Z * 20000));
+            if (!firstAt.TryGetValue(key, out int g)) firstAt[key] = g = v;
+            group[v] = g;
+        }
+        void Weld(Vector3[] w)
+        {
+            var biggest = new Vector3[n];
+            for (int v = 0; v < n; v++) if (group[v] >= 0 && w[v].LengthSquared() > biggest[group[v]].LengthSquared()) biggest[group[v]] = w[v];
+            for (int v = 0; v < n; v++) if (group[v] >= 0) w[v] = biggest[group[v]];
+        }
         for (int v = 0; v < n; v++)
         {
             if (!used[v]) continue;
@@ -332,6 +348,7 @@ internal static class CoverageGeometry
             if (need == 0) continue;
             world[v] = hit * need;
         }
+        Weld(world);
         // Spread each lift to neighbouring vertices with a 0.7 falloff per ring. Only larger values replace smaller ones,
         // so a vertex never gets less than it needs; this removes stair steps where lifted and untouched vertices meet.
         if (smoothing > 0)
@@ -352,6 +369,7 @@ internal static class CoverageGeometry
                     var fromA = world[a] * .7f; if (fromA.LengthSquared() > next[b].LengthSquared()) next[b] = fromA;
                 }
                 world = next;
+                Weld(world);
             }
         }
         var offsets = new Vector3[n];

@@ -57,7 +57,8 @@ internal sealed class CoverageFitter
             // shortcut: assumes a standing pose; lying poses stop masking skin entirely.
             float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .14f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
-            if (Plugin.Mode.Value == "Inflate") { Inflate(outfit, garments, coverage, bodies, signature, scale, wanted, ref capturesLeft); continue; }
+            bool inflating = Plugin.Mode.Value == "Inflate";
+            if (inflating) Inflate(outfit, garments, bodies, signature, scale, wanted, ref capturesLeft);
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
                 if (!target.enabled || !target.gameObject.activeInHierarchy || target.forceRenderingOff) continue;
@@ -67,6 +68,8 @@ internal sealed class CoverageFitter
                 bool body = owner == "@body" && materials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal));
                 if (!body && !garments.Contains(target)) continue;
                 var item = body ? null : outfit.Items[owner];
+                // While inflating, only body jewellery is still hidden (a barbell must not push a dress out by centimetres).
+                if (inflating && (body || item.Kind is not (ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory))) continue;
                 var parts = Enumerable.Range(0, mesh.subMeshCount).Where(i => mesh.GetTopology(i) == MeshTopology.Triangles
                     && (!body || i < materials.Length && materials[i] != null &&
                         (materials[i].name.StartsWith("Skin_Body", StringComparison.Ordinal) || materials[i].name.StartsWith("Pezones", StringComparison.Ordinal)))).ToArray();
@@ -82,7 +85,7 @@ internal sealed class CoverageFitter
                     Request(scale, footY, target, covers, covers.Select(r => coverage[r.GetInstanceID()].parts).ToArray(),
                         covers.Select(r => coverage[r.GetInstanceID()].opacities).ToArray(), parts, signature, wanted, body,
                         item?.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory,
-                        covers.Select(r => !body && ClothingOrder.WaistSeam(item.Layer,item.Kind,outfit.Items[outfit.OwnerOf(r)].Layer,outfit.Items[outfit.OwnerOf(r)].Kind)).ToArray(), ref capturesLeft);
+                        covers.Select(r => !body && ClothingOrder.WaistSeam(item.Layer,item.Kind,outfit.Items[outfit.OwnerOf(r)].Layer,outfit.Items[outfit.OwnerOf(r)].Kind)).ToArray(), ref capturesLeft, mode: inflating ? "Hide" : null);
             }
         }
         foreach (int id in states.Keys.Where(x => !wanted.Contains(x)).ToArray()) { Release(states[id]); states.Remove(id); }
@@ -90,7 +93,7 @@ internal sealed class CoverageFitter
     }
 
     // Inflate mode: the body skin is the fixed reference and every worn garment is lifted off it; the body itself is never touched.
-    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, Dictionary<int, (int[] parts, CoverageGeometry.Opacity[] opacities)> coverage, SkinnedMeshRenderer[] bodies, string signature, float scale, HashSet<int> wanted, ref int capturesLeft)
+    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, SkinnedMeshRenderer[] bodies, string signature, float scale, HashSet<int> wanted, ref int capturesLeft)
     {
         var skin = bodies.Where(r => r.enabled && OriginalMesh(r) != null && OriginalMesh(r).isReadable
             && r.sharedMaterials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal))).FirstOrDefault();
@@ -109,21 +112,10 @@ internal sealed class CoverageFitter
             if (!mesh.isReadable) continue;
             var parts = Enumerable.Range(0, mesh.subMeshCount).Where(i => mesh.GetTopology(i) == MeshTopology.Triangles).ToArray();
             if (parts.Length == 0) continue;
-            // References: the skin plus every garment worn underneath this one (by the game's own layer order), so an outer garment
-            // is lifted over inner layers instead of deleting them.
+            // The skin is the only reference: lifting over inner garments made ribbed hems ripple (0.7.1).
             var refs = new List<SkinnedMeshRenderer> { skin };
             var refParts = new List<int[]> { skinParts };
             var refOpacity = new List<CoverageGeometry.Opacity[]> { new CoverageGeometry.Opacity[skinMesh.subMeshCount] };
-            foreach (var inner in garments)
-            {
-                if (inner == target) continue;
-                var below = outfit.Items[outfit.OwnerOf(inner)];
-                if (below.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory or ClothingOrder.Kind.Accessories) continue;
-                if (!ClothingOrder.Covers(below.Layer, (int)below.Flags, below.Kind, item.Layer, (int)item.Flags, item.Kind)) continue;
-                var cover = coverage[inner.GetInstanceID()];
-                if (cover.parts.Length == 0 || !OriginalMesh(inner).isReadable) continue;
-                refs.Add(inner); refParts.Add(cover.parts); refOpacity.Add(cover.opacities);
-            }
             // Innermost layer (hosiery, underwear) should hug the skin; everything else gets a larger margin because the
             // tessellated skin shader displaces the surface a few millimetres beyond the mesh.
             bool tight = item.Layer <= 1;
@@ -133,12 +125,13 @@ internal sealed class CoverageFitter
     }
 
     private void Request(float scale, float footY, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
-        int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft, float inflateMargin = 0, float tightReach = 0)
+        int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft, float inflateMargin = 0, float tightReach = 0, string mode = null)
     {
+        mode ??= Plugin.Mode.Value;
         int id = target.GetInstanceID();
         var original = OriginalMesh(target);
         var coverOriginals = covers.Select(OriginalMesh).ToArray();
-        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + Plugin.Mode.Value + ":" + Plugin.PushMaxCm.Value + ":" + inflateMargin + "/" + tightReach + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
+        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + mode + ":" + Plugin.PushMaxCm.Value + ":" + inflateMargin + "/" + tightReach + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
             + string.Join(",", covers.Select((r, i) => r.GetInstanceID() + "/" + coverOriginals[i].GetInstanceID() + "/"
                 + string.Join(".", coverParts[i].Select(part => part + "=" + (opacities[i][part]?.Signature ?? "opaque")))));
         wanted.Add(id);
@@ -163,7 +156,7 @@ internal sealed class CoverageFitter
                 var toes = body ? VisibleExtremities(target, original, Toes) : null;
                 var surfaces = covers.Select((r, i) => Capture(r, coverOriginals[i], coverParts[i], opacities[i]).surface).ToArray();
                 var token = state.Cancel.Token;
-                bool inflate = Plugin.Mode.Value == "Inflate", push = Plugin.Mode.Value == "Push", snap = Plugin.Mode.Value == "Snap";
+                bool inflate = mode == "Inflate", push = mode == "Push", snap = mode == "Snap";
                 var skin = push || snap || inflate ? CaptureSkin(target, original) : null;
                 state.Job = inflate ? Task.Run(async () =>
                 {
@@ -197,12 +190,12 @@ internal sealed class CoverageFitter
                     state.Kept = null; state.Offsets = null;
                     return;
                 }
-                if (result.Total == 0 || Plugin.Mode.Value is "Hide" or "Snap" && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
+                if (result.Total == 0 || mode is "Hide" or "Snap" && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
                 if (target.sharedMesh != original && target.sharedMesh != state.Replacement) throw new InvalidOperationException("Target mesh changed while computing; result discarded.");
                 if (result.Offsets != null)
                 {
                     // Skip tiny changes: rewriting a mesh with hundreds of blend shapes every scan would cost frame time.
-                    bool snapMode = Plugin.Mode.Value == "Snap";
+                    bool snapMode = mode == "Snap";
                     if (state.Offsets != null && state.Offsets.Length == result.Offsets.Length
                         && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any()
                         && (!snapMode || state.Kept != null && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub])))) return;
@@ -222,7 +215,7 @@ internal sealed class CoverageFitter
                     state.Replacement.RecalculateBounds();
                     target.sharedMesh = state.Replacement;
                     state.Offsets = result.Offsets;
-                    if (first) Plugin.Logger.LogInfo($"Coverage ({Plugin.Mode.Value}): {result.Removed}/{result.Total} moved or removed, vertices of '{target.name}' under {string.Join(", ", covers.Select(r => r.name))}.");
+                    if (first) Plugin.Logger.LogInfo($"Coverage ({mode}): {result.Removed}/{result.Total} moved or removed, vertices of '{target.name}' under {string.Join(", ", covers.Select(r => r.name))}.");
                     return;
                 }
                 if ((result.Added == null || result.Added.Length == 0) && target.sharedMesh == state.Replacement && state.Kept != null

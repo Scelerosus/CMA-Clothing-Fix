@@ -76,6 +76,10 @@ Check(CoverageGeometry.Inflate(ramp,normals,Plane(.005f),new[]{0},Skin(),.03f,.0
 var tightPull = CoverageGeometry.Inflate(target,normals,Plane(-.01f),new[]{0},Skin(),.03f,.001f,CancellationToken.None,0,.02f);
 Check(Math.Abs(tightPull.Offsets[0].Z+.009f)<1e-5f,"tight garment hovering 1 cm above the skin is pulled in to the margin");
 Check(CoverageGeometry.Inflate(target,normals,Plane(-.03f),new[]{0},Skin(),.03f,.001f,CancellationToken.None,0,.02f).Removed==0,"tight pull ignores garments hovering beyond its reach");
+var seam = new CoverageGeometry.Surface(new[]{new Vector3(-.1f,-.1f,0),new Vector3(.1f,-.1f,.03f),new Vector3(0,.1f,.03f),new Vector3(-.1f,-.1f,0)},new[]{new[]{0,1,2,3,1,2}});
+var seamNormals = new[]{Vector3.UnitZ,Vector3.UnitZ,Vector3.UnitZ,-Vector3.UnitZ};
+var welded = CoverageGeometry.Inflate(seam,seamNormals,Plane(.005f),new[]{0},new CoverageGeometry.SkinInfo(new[]{new[]{1f,0,0,0,1f,0,0,0,1f}},new int[16],Enumerable.Range(0,16).Select(i=>i%4==0?1f:0f).ToArray()),.03f,.002f,CancellationToken.None,0);
+Check(Math.Abs(welded.Offsets[0].Z-.007f)<1e-5f && welded.Offsets[3]==welded.Offsets[0],"vertices duplicated at a seam receive the same lift");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

@@ -151,3 +151,8 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.7.2 — tight hosiery and larger bust window
 - Stockings sat 1.5 mm above the skin and looked loose. Garments on layer <= 1 (hosiery, underwear) now use a 0.7 mm margin and are also pulled in to it when they hover within 1.5 cm above the skin (scaled). Other garments use a 3 mm margin because the LayeredLitTessellation skin shader displaces the surface a few millimetres beyond the mesh, which showed as skin through thin cloth on the bust.
 - `PushMaxCm` default 3 -> 5 so deeper bust sinks are caught; existing configs keep their value (cfg edited by hand). Two managed checks added. Not verified in game.
+
+## 0.7.3 — seam welding, jewellery hidden, skin-only reference
+- Blue dress close-up showed a thin slit along a cup seam: UV/hard-edge seams duplicate vertices, and each copy found its own lift. Inflate now welds co-located vertices (0.05 mm grid) so every copy gets the largest lift of its group, before and after each smoothing pass. New managed check.
+- A barbell piercing showed through the dress. Inflate mode must not lift a dress by centimetres for jewellery, so body jewellery (underwear accessories) is still masked with the Hide algorithm while everything else inflates (`Request` got a per-call `mode`).
+- The 0.7.1 inner-garment references made the hoodie hem band ripple over the skirt (0.7.0 and 0.5.13 shots show it straight); the skin is the only reference again. Stockings now hug the leg in the new shots. The sawtooth under the hoodie bust is unchanged by smoothing, so it comes from the hoodie mesh itself. Not verified in game.
