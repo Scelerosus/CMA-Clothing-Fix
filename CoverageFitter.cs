@@ -360,11 +360,7 @@ internal sealed class CoverageFitter
         var key = (original.GetInstanceID(), original.vertexCount, original.blendShapeCount);
         if (!meshData.TryGetValue(key, out var data)) meshData[key] = data = BuildMeshData(original);
         if (data == null) return null;
-        // renderer.quality 0 (Auto) defers to the project setting; boneWeights holds at most 4 influences either way.
-        int influences = (int)renderer.quality; if (influences == 0) influences = (int)QualitySettings.skinWeights;
-        var root = renderer.localToWorldMatrix;
-        var (positions, normals) = Skinning.Skin(data, i => renderer.GetBlendShapeWeight(i), bones, Math.Clamp(influences, 1, 4),
-            new[] { root.m00, root.m01, root.m02, root.m03, root.m10, root.m11, root.m12, root.m13, root.m20, root.m21, root.m22, root.m23 });
+        var (positions, normals) = Skinning.Skin(data, i => renderer.GetBlendShapeWeight(i), bones, Influences(renderer), RootMatrix(renderer));
         var triangles = new int[original.subMeshCount][];
         for (int i = 0; i < triangles.Length; i++) triangles[i] = parts.Contains(i) ? original.GetTriangles(i).ToArray() : Array.Empty<int>();
         var uv = opacities != null && opacities.Any(x => x != null) ? original.uv.Select(v => new V2(v.x, v.y)).ToArray() : null;
@@ -440,6 +436,48 @@ internal sealed class CoverageFitter
         return result;
     }
 
+    // renderer.quality 0 (Auto) defers to the project setting; boneWeights holds at most 4 influences either way.
+    private static int Influences(SkinnedMeshRenderer renderer)
+    {
+        int influences = (int)renderer.quality; if (influences == 0) influences = (int)QualitySettings.skinWeights;
+        return Math.Clamp(influences, 1, 4);
+    }
+
+    private static float[] RootMatrix(SkinnedMeshRenderer renderer)
+    {
+        var root = renderer.localToWorldMatrix;
+        return new[] { root.m00, root.m01, root.m02, root.m03, root.m10, root.m11, root.m12, root.m13, root.m20, root.m21, root.m22, root.m23 };
+    }
+
+    private readonly HashSet<int> probed = new();
+
+    // One-off per renderer: recompute the managed surface with each active blend shape left out, and with weights clamped to 0..100,
+    // and log which variant matches BakeMesh best. This points at the shape (or rule) that is evaluated differently.
+    private void ProbeShapes(SkinnedMeshRenderer renderer, Mesh original, Skinning.MeshData data, V3[] baked)
+    {
+        var bones = BoneMatrices(renderer, original);
+        if (bones == null || data == null) return;
+        int influences = Influences(renderer); var root = RootMatrix(renderer);
+        var weights = new float[original.blendShapeCount];
+        for (int i = 0; i < weights.Length; i++) weights[i] = renderer.GetBlendShapeWeight(i);
+        string Err(Func<int, float> weight)
+        {
+            var (positions, _) = Skinning.Skin(data, weight, bones, influences, root);
+            var e = new float[baked.Length];
+            for (int i = 0; i < e.Length; i++) e[i] = (baked[i] - positions[i]).Length() * 1000;
+            Array.Sort(e);
+            return $"p99.9 {e[(int)((e.Length - 1) * .999)]:F3} max {e[^1]:F3}";
+        }
+        var log = new System.Text.StringBuilder($"Shape probe '{renderer.name}': all weights as read: {Err(i => weights[i])}; weights clamped to 0..100: {Err(i => Math.Clamp(weights[i], 0, 100))}.");
+        foreach (var shape in data.Shapes)
+        {
+            if (weights[shape.ShapeIndex] == 0) continue;
+            var first = shape.Frames[0];
+            log.Append($"{Environment.NewLine}    '{original.GetBlendShapeName(shape.ShapeIndex)}' weight {weights[shape.ShapeIndex]:F2}, {shape.Frames.Length} frame(s), first frame weight {first.Weight:F1}, {first.Index.Length} deltas; without it: {Err(i => i == shape.ShapeIndex ? 0 : weights[i])}");
+        }
+        Plugin.Logger.LogInfo(log.ToString());
+    }
+
     private void CheckSkinning(SkinnedMeshRenderer renderer, Mesh original, V3[] baked, V3[] managed)
     {
         int id = renderer.GetInstanceID();
@@ -462,6 +500,7 @@ internal sealed class CoverageFitter
         var sorted = (float[])error.Clone();
         Array.Sort(sorted);
         Plugin.Logger.LogInfo($"Skinning check '{renderer.name}': {error.Length} vertices, error mm mean {error.Average():F3}, p99.9 {sorted[(int)((sorted.Length - 1) * .999)]:F3}, max {sorted[^1]:F3}; over 1 mm: {bad} ({badOnShape} on blend-shape vertices, {activeShapes} shapes active).");
+        if (bad > 0 && probed.Add(renderer.GetInstanceID())) ProbeShapes(renderer, original, meshData.GetValueOrDefault((original.GetInstanceID(), original.vertexCount, original.blendShapeCount)), baked);
     }
 
     private static (CoverageGeometry.Surface surface, V3[] normals) CaptureBaked(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)

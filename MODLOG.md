@@ -168,3 +168,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.9.1 — skinning diagnostics
 - First Check results (0.9.0): body 16,656 verts p99.9 0.01 mm, stockings/shoes/bracelet/piercing <= 0.02 mm (exact). Mismatch on G-string (p99.9 2.3 mm, max 2.5), Slit Minidress (p99.9 4.2-4.5, max up to 10) and AeroSportsHoodie (p99.9 3.5, max 5.1) with mean ~0.1 mm, so a small fraction of vertices differ. Candidates: vertices with more than 4 bone influences (legacy boneWeights keeps 4) or blend shape semantics (G-string has a shape at weight 157).
 - 0.9.1 logs per mesh how many vertices have more than 4 influences (GetBonesPerVertex) and, per Check, how many vertices are off by > 1 mm and how many of those lie on vertices moved by an active blend shape. No behaviour change.
+
+## 0.9.2 — blend shape probe
+- 0.9.1 logs: vertices with more than 4 influences exist on hoodie (29,765, max 8), dress (1,647), G-string (421) and even body (207), yet the body matches BakeMesh to 0.02 mm, so influence truncation is not the cause. Every vertex off by > 1 mm (G-string 26, dress 124, hoodie ~4,870) lies on a vertex moved by an active blend shape.
+- 0.9.2 adds a one-off `Shape probe` per mismatching renderer: managed surface with each active shape left out in turn, and with weights clamped to 0..100, each compared with BakeMesh, plus shape name, weight, frame count, first frame weight and delta count. Behaviour unchanged.
