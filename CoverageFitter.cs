@@ -58,7 +58,7 @@ internal sealed class CoverageFitter
             float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .14f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
             bool inflating = Plugin.Mode.Value == "Inflate";
-            if (inflating) Inflate(outfit, garments, bodies, signature, scale, wanted, ref capturesLeft);
+            if (inflating) Inflate(outfit, garments, coverage, bodies, signature, scale, footY, wanted, ref capturesLeft);
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
                 if (!target.enabled || !target.gameObject.activeInHierarchy || target.forceRenderingOff) continue;
@@ -68,7 +68,7 @@ internal sealed class CoverageFitter
                 bool body = owner == "@body" && materials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal));
                 if (!body && !garments.Contains(target)) continue;
                 var item = body ? null : outfit.Items[owner];
-                // While inflating, only body jewellery is still hidden (a barbell must not push a dress out by centimetres).
+                // While inflating, body jewellery is pushed back under the outer garment instead (a barbell must not lift a dress by centimetres).
                 if (inflating && (body || item.Kind is not (ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory))) continue;
                 var parts = Enumerable.Range(0, mesh.subMeshCount).Where(i => mesh.GetTopology(i) == MeshTopology.Triangles
                     && (!body || i < materials.Length && materials[i] != null &&
@@ -85,7 +85,7 @@ internal sealed class CoverageFitter
                     Request(scale, footY, target, covers, covers.Select(r => coverage[r.GetInstanceID()].parts).ToArray(),
                         covers.Select(r => coverage[r.GetInstanceID()].opacities).ToArray(), parts, signature, wanted, body,
                         item?.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory,
-                        covers.Select(r => !body && ClothingOrder.WaistSeam(item.Layer,item.Kind,outfit.Items[outfit.OwnerOf(r)].Layer,outfit.Items[outfit.OwnerOf(r)].Kind)).ToArray(), ref capturesLeft, mode: inflating ? "Hide" : null);
+                        covers.Select(r => !body && ClothingOrder.WaistSeam(item.Layer,item.Kind,outfit.Items[outfit.OwnerOf(r)].Layer,outfit.Items[outfit.OwnerOf(r)].Kind)).ToArray(), ref capturesLeft, mode: inflating ? "Push" : null);
             }
         }
         foreach (int id in states.Keys.Where(x => !wanted.Contains(x)).ToArray()) { Release(states[id]); states.Remove(id); }
@@ -93,7 +93,7 @@ internal sealed class CoverageFitter
     }
 
     // Inflate mode: the body skin is the fixed reference and every worn garment is lifted off it; the body itself is never touched.
-    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, SkinnedMeshRenderer[] bodies, string signature, float scale, HashSet<int> wanted, ref int capturesLeft)
+    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, Dictionary<int, (int[] parts, CoverageGeometry.Opacity[] opacities)> coverage, SkinnedMeshRenderer[] bodies, string signature, float scale, float footY, HashSet<int> wanted, ref int capturesLeft)
     {
         var skin = bodies.Where(r => r.enabled && OriginalMesh(r) != null && OriginalMesh(r).isReadable
             && r.sharedMaterials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal))).FirstOrDefault();
@@ -116,22 +116,29 @@ internal sealed class CoverageFitter
             var refs = new List<SkinnedMeshRenderer> { skin };
             var refParts = new List<int[]> { skinParts };
             var refOpacity = new List<CoverageGeometry.Opacity[]> { new CoverageGeometry.Opacity[skinMesh.subMeshCount] };
+            // Garments worn over this one still hide its covered triangles (the dress under a hoodie); the skin is lifted over, not hidden.
+            foreach (var outer in garments.Where(r => r != target && OriginalMesh(r).isReadable && coverage[r.GetInstanceID()].parts.Length > 0).OrderBy(r => r.GetInstanceID()))
+            {
+                var o = outfit.Items[outfit.OwnerOf(outer)];
+                if (!ClothingOrder.Covers(item.Layer, (int)item.Flags, item.Kind, o.Layer, (int)o.Flags, o.Kind)) continue;
+                refs.Add(outer); refParts.Add(coverage[outer.GetInstanceID()].parts); refOpacity.Add(coverage[outer.GetInstanceID()].opacities);
+            }
             // Innermost layer (hosiery, underwear) should hug the skin; everything else gets a larger margin because the
             // tessellated skin shader displaces the surface a few millimetres beyond the mesh.
             bool tight = item.Layer <= 1;
-            Request(scale, float.NegativeInfinity, target, refs.ToArray(), refParts.ToArray(), refOpacity.ToArray(),
-                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .0007f * scale : .003f * scale, tight ? .015f * scale : 0);
+            Request(scale, footY, target, refs.ToArray(), refParts.ToArray(), refOpacity.ToArray(),
+                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .0007f * scale : .003f * scale, tight ? .015f * scale : 0, inflateRefs: 1);
         }
     }
 
     private void Request(float scale, float footY, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
-        int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft, float inflateMargin = 0, float tightReach = 0, string mode = null)
+        int[] parts, string outfit, HashSet<int> wanted, bool body, bool jewellery, bool[] seams, ref int capturesLeft, float inflateMargin = 0, float tightReach = 0, string mode = null, int inflateRefs = 0)
     {
         mode ??= Plugin.Mode.Value;
         int id = target.GetInstanceID();
         var original = OriginalMesh(target);
         var coverOriginals = covers.Select(OriginalMesh).ToArray();
-        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + mode + ":" + Plugin.PushMaxCm.Value + ":" + inflateMargin + "/" + tightReach + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
+        string key = outfit + ":" + scale.ToString("F2") + ":" + Plugin.CoverReachCm.Value + ":" + Plugin.CoverDepthCm.Value + ":" + Plugin.CoverHemKeepCm.Value + ":" + mode + ":" + Plugin.PushMaxCm.Value + ":" + inflateMargin + "/" + tightReach + "/" + inflateRefs + ":" + original.GetInstanceID() + ":" + string.Join(",", parts) + ":"
             + string.Join(",", covers.Select((r, i) => r.GetInstanceID() + "/" + coverOriginals[i].GetInstanceID() + "/"
                 + string.Join(".", coverParts[i].Select(part => part + "=" + (opacities[i][part]?.Signature ?? "opaque")))));
         wanted.Add(id);
@@ -161,8 +168,15 @@ internal sealed class CoverageFitter
                 state.Job = inflate ? Task.Run(async () =>
                 {
                     await Worker.WaitAsync(token);
-                    try { return CoverageGeometry.Inflate(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, skin,
-                        Plugin.PushMaxCm.Value / 100 * scale, inflateMargin, token, 3, tightReach); }
+                    try
+                    {
+                        var lifted = CoverageGeometry.Inflate(input.surface, input.normals, CoverageGeometry.Combine(surfaces.Take(inflateRefs), token), parts, skin,
+                            Plugin.PushMaxCm.Value / 100 * scale, inflateMargin, token, 3, tightReach);
+                        if (surfaces.Length <= inflateRefs) return lifted;
+                        var hidden = CoverageGeometry.Mask(input.surface, input.normals, CoverageGeometry.Combine(surfaces.Skip(inflateRefs), token), parts, token, .002f, false,
+                            reach: Plugin.CoverReachCm.Value / 100 * scale, depth: .035f * scale, scale: scale, keepBelowY: footY, hemKeep: Plugin.CoverHemKeepCm.Value / 100 * scale);
+                        return new CoverageGeometry.Result(hidden.Kept, lifted.Removed + hidden.Removed, lifted.Total, null, lifted.Offsets);
+                    }
                     finally { Worker.Release(); }
                 }, token) : push ? Task.Run(async () =>
                 {
@@ -195,10 +209,10 @@ internal sealed class CoverageFitter
                 if (result.Offsets != null)
                 {
                     // Skip tiny changes: rewriting a mesh with hundreds of blend shapes every scan would cost frame time.
-                    bool snapMode = mode == "Snap";
+                    bool carriesTriangles = mode is "Snap" or "Inflate";
+                    bool keptSame = !carriesTriangles || state.Kept != null && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub]));
                     if (state.Offsets != null && state.Offsets.Length == result.Offsets.Length
-                        && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any()
-                        && (!snapMode || state.Kept != null && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub])))) return;
+                        && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any() && keptSame) return;
                     var rest = state.Rest ??= original.vertices.ToArray();
                     if (rest.Length != result.Offsets.Length) throw new InvalidOperationException("Vertex count changed while computing; result discarded.");
                     var moved = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(rest.Length);
@@ -206,7 +220,7 @@ internal sealed class CoverageFitter
                     bool first = state.Replacement == null;
                     if (first) { state.Replacement = Object.Instantiate(original); state.Replacement.name = original.name; }
                     state.Replacement.vertices = moved;
-                    if (snapMode)
+                    if (carriesTriangles && !keptSame)
                     {
                         foreach (int sub in parts)
                             state.Replacement.SetTriangles(new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>(result.Kept[sub]), sub, false);
