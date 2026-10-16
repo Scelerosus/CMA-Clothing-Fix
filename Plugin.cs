@@ -11,7 +11,7 @@ namespace CMAClothingFix;
 public sealed class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
-    internal const string Version = "0.9.9"; // keep equal to <Version> in the csproj
+    internal const string Version = "0.9.10"; // keep equal to <Version> in the csproj
     internal static ConfigEntry<bool> Enabled, Diagnostics;
     internal static ConfigEntry<bool> ExperimentalCoverage;
     internal static ConfigEntry<float> RefreshSeconds, CoverReachCm, CoverDepthCm, CoverHemKeepCm, PushMaxCm;

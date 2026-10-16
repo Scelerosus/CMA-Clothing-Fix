@@ -198,3 +198,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.9.9 — flat skin while dressed, 1 mm hosiery
 - Hosiery must hug the skin without holes. The holes come from the tessellated skin surface being displaced beyond the mesh, so instead of raising the hosiery margin the displacement is removed where it cannot be seen: `SkinDisplacementScale` (default now 0) applies only while the character wears a real garment (accessories, jewellery and glasses do not count); bare skin keeps the full amplitude and the originals are restored automatically. Hosiery/underwear margin is 1 mm again, pulled in within 1.5 cm. Cost: fine skin relief (also on bare arms/legs next to a dress) is flattened while dressed. Not verified in game.
+
+## 0.9.10 — closer hosiery
+- Stockings with a thick top band still stood off the skin in a close-up. With the skin displacement flattened while dressed (confirmed in the log: Skin_Body/Pezones scaled by 0), hosiery/underwear margin is now 0.5 mm and the pull-in reach 3 cm (scaled) so a flared top band is drawn in too. Not verified in game.
