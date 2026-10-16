@@ -23,6 +23,7 @@ internal sealed class CoverageFitter
     }
     private readonly Dictionary<int, State> states = new();
     private readonly HashSet<string> warnings = new();
+    private readonly HashSet<string> loggedOutfits = new();
     private readonly AlphaCoverage alpha = new();
     internal int ActiveMasks => states.Values.Count(s => s.Replacement != null);
     internal int PendingMasks => states.Values.Count(s => !s.Finished);
@@ -45,6 +46,10 @@ internal sealed class CoverageFitter
             var garments = outfit.Renderers.Where(r => r.enabled && r.gameObject.activeInHierarchy && !r.forceRenderingOff
                 && OriginalMesh(r) != null && outfit.Items.TryGetValue(outfit.OwnerOf(r), out var item) && item.Visible && item.Layer >= 0).ToArray();
             string signature = outfit.Signature();
+            // One compact line per outfit change so problems can be diagnosed from LogOutput.log without saving a report.
+            if (loggedOutfits.Add(signature))
+                Plugin.Logger.LogInfo("Outfit: " + string.Join("; ", outfit.Items.Values.OrderBy(x => x.Layer).ThenBy(x => x.Kind)
+                    .Select(x => $"{x.Id} [{x.Kind} L{x.Layer} {(x.Visible ? "on" : "off")} {x.Coverage}]")));
             // Reach scales with the character so tall/short models get proportional windows.
             var bodies = outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body").ToArray();
             float scale = Math.Clamp(bodies.Select(r => r.bounds.size.y).DefaultIfEmpty(1.7f).Max() / 1.7f, .6f, 1.4f);
@@ -166,7 +171,7 @@ internal sealed class CoverageFitter
                     state.Replacement.RecalculateBounds();
                     target.sharedMesh = state.Replacement;
                     state.Offsets = result.Offsets;
-                    if (first) Plugin.Logger.LogInfo($"Coverage ({Plugin.Mode.Value}): {result.Removed}/{result.Total} moved or removed, vertices of '{target.name}' under {covers.Length} outer renderer(s).");
+                    if (first) Plugin.Logger.LogInfo($"Coverage ({Plugin.Mode.Value}): {result.Removed}/{result.Total} moved or removed, vertices of '{target.name}' under {string.Join(", ", covers.Select(r => r.name))}.");
                     return;
                 }
                 if ((result.Added == null || result.Added.Length == 0) && target.sharedMesh == state.Replacement && state.Kept != null
@@ -185,7 +190,7 @@ internal sealed class CoverageFitter
                 }
                 catch { if (fresh) Object.Destroy(replacement); throw; }
                 if (!fresh) return;
-                Plugin.Logger.LogInfo($"Coverage: masked {result.Removed}/{result.Total} triangles of '{target.name}' under {covers.Length} outer renderer(s).");
+                Plugin.Logger.LogInfo($"Coverage: masked {result.Removed}/{result.Total} triangles of '{target.name}' under {string.Join(", ", covers.Select(r => r.name))}.");
             }
         }
         catch (Exception ex)

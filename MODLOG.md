@@ -136,3 +136,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 - New `Mode = Snap`: Hide plus edge snapping. A covered vertex of a visible boundary triangle slides along its edge to where coverage ends (6 bisection steps), converted to rest space through the per-vertex skin matrix. Vertex count, weights and blend shapes stay untouched, so the 0.5.0 corruption causes (rewritten bone weights, Vector2 UVs, interpolated tangents, unwelded new vertices, topology change each scan) do not apply. Exempt feet/hands/head vertices are never snapped.
 - Hide mode now reuses its replacement mesh instead of instantiating a new one on each change; Release destroys the replacement only after sharedMesh was restored. Plugin version is a single constant (`Plugin.Version`) used by BepInPlugin, the log and reports.
 - Not verified in game; Snap is per-pose like Push, and texture stretches slightly along snapped edges.
+
+## 0.6.2 — self-diagnosing log
+- One `Outfit:` log line per outfit change (item id, kind, layer, visible, coverage flags) and each `Coverage` line now names the outer renderers, so problems can be read from LogOutput.log without saving a report by hand. Not verified in game.
