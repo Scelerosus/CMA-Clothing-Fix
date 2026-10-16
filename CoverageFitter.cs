@@ -105,7 +105,10 @@ internal sealed class CoverageFitter
     // surface sits centimetres off the mesh the mod measures. Scale that amplitude on the body skin materials; restore the originals at scale 1.
     private void ApplySkinDisplacement(Outfit outfit)
     {
-        float scale = Plugin.SkinDisplacementScale.Value;
+        // Skin detail only matters where the skin is visible: flatten the displacement while any real garment is worn, restore it when bare.
+        bool dressed = outfit.Items.Values.Any(i => i.Visible && i.Layer >= 0
+            && i.Kind is not (ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory or ClothingOrder.Kind.Accessories or ClothingOrder.Kind.Glasses));
+        float scale = dressed ? Plugin.SkinDisplacementScale.Value : 1f;
         foreach (var renderer in outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body"))
             foreach (var material in renderer.sharedMaterials)
             {
@@ -222,7 +225,7 @@ internal sealed class CoverageFitter
             // tessellated skin shader displaces the surface a few millimetres beyond the mesh.
             bool tight = item.Layer <= 1;
             Request(scale, footY, target, refs.ToArray(), refParts.ToArray(), refOpacity.ToArray(),
-                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .004f * scale : .003f * scale, tight ? .015f * scale : 0, inflateRefs: 1);
+                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .001f * scale : .003f * scale, tight ? .015f * scale : 0, inflateRefs: 1);
         }
     }
 

@@ -195,3 +195,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.9.8 — hosiery margin 0.7 -> 4 mm
 - Before/after screenshots of fishnet tights (Hose Mirrored, 66,199 vertices, layer L1 with no coverage flags, so no garment hides them) showed large skin-coloured holes with the mod and none without. Cause: the tight-garment pull from 0.7.2 drew hosiery to 0.7 mm above the skin mesh while the tessellated skin surface is displaced a few millimetres beyond the mesh, so skin showed through. Margin for layer <= 1 garments is now 4 mm (still pulls in within 1.5 cm). If holes remain, disable the pull entirely. Not verified in game.
+
+## 0.9.9 — flat skin while dressed, 1 mm hosiery
+- Hosiery must hug the skin without holes. The holes come from the tessellated skin surface being displaced beyond the mesh, so instead of raising the hosiery margin the displacement is removed where it cannot be seen: `SkinDisplacementScale` (default now 0) applies only while the character wears a real garment (accessories, jewellery and glasses do not count); bare skin keeps the full amplitude and the originals are restored automatically. Hosiery/underwear margin is 1 mm again, pulled in within 1.5 cm. Cost: fine skin relief (also on bare arms/legs next to a dress) is flattened while dressed. Not verified in game.
