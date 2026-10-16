@@ -80,6 +80,24 @@ var seam = new CoverageGeometry.Surface(new[]{new Vector3(-.1f,-.1f,0),new Vecto
 var seamNormals = new[]{Vector3.UnitZ,Vector3.UnitZ,Vector3.UnitZ,-Vector3.UnitZ};
 var welded = CoverageGeometry.Inflate(seam,seamNormals,Plane(.005f),new[]{0},new CoverageGeometry.SkinInfo(new[]{new[]{1f,0,0,0,1f,0,0,0,1f}},new int[16],Enumerable.Range(0,16).Select(i=>i%4==0?1f:0f).ToArray()),.03f,.002f,CancellationToken.None,0);
 Check(Math.Abs(welded.Offsets[0].Z-.007f)<1e-5f && welded.Offsets[3]==welded.Offsets[0],"vertices duplicated at a seam receive the same lift");
+float[] I = {1,0,0,0, 0,1,0,0, 0,0,1,0}, shift = {1,0,0,2, 0,1,0,0, 0,0,1,0}, rotZ = {0,-1,0,0, 1,0,0,0, 0,0,1,0};
+Skinning.MeshData SkinMesh(params Skinning.Shape[] shapes) => new(new[]{new Vector3(1,0,0),new Vector3(0,1,0)},new[]{Vector3.UnitX,Vector3.UnitY},new[]{0,0,0,0, 0,1,0,0},new[]{1f,0,0,0, .5f,.5f,0,0},shapes);
+bool Near(Vector3 a, Vector3 b) => (a-b).Length()<1e-5f;
+Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{I,I}).positions[0],new Vector3(1,0,0)),"identity bone keeps the rest pose");
+Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{shift,I}).positions[0],new Vector3(3,0,0)),"bone translation moves the vertex");
+Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{I,shift}).positions[1],new Vector3(1,1,0)),"two equal influences blend halfway");
+var rotated = Skinning.Skin(SkinMesh(),_=>0,new[]{rotZ,I});
+Check(Near(rotated.positions[0],new Vector3(0,1,0)) && Near(rotated.normals[0],new Vector3(0,1,0)),"bone rotation turns position and normal");
+var one = new Skinning.Shape(0,new[]{new Skinning.ShapeFrame(100,new[]{0},new[]{new Vector3(0,2,0)})});
+Check(Near(Skinning.Skin(SkinMesh(one),_=>50,new[]{I,I}).positions[0],new Vector3(1,1,0)) && Near(Skinning.Skin(SkinMesh(one),_=>200,new[]{I,I}).positions[0],new Vector3(1,4,0)),
+    "single-frame blend shape scales linearly, also beyond 100");
+var two = new Skinning.Shape(0,new[]{new Skinning.ShapeFrame(50,new[]{0},new[]{new Vector3(0,1,0)}),new Skinning.ShapeFrame(100,new[]{0},new[]{new Vector3(0,4,0)})});
+Check(Near(Skinning.Skin(SkinMesh(two),_=>75,new[]{I,I}).positions[0],new Vector3(1,2.5f,0)) && Near(Skinning.Skin(SkinMesh(two),_=>25,new[]{I,I}).positions[0],new Vector3(1,.5f,0)),
+    "multi-frame blend shape interpolates between frames and scales below the first");
+Check(Near(Skinning.Skin(SkinMesh(one),_=>0,new[]{I,I}).positions[0],new Vector3(1,0,0)),"zero blend shape weight changes nothing");
+Check(Near(Skinning.Skin(SkinMesh(two),_=>150,new[]{I,I}).positions[0],new Vector3(1,7,0)),"multi-frame blend shape extrapolates beyond the last frame");
+Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{I,shift},1).positions[1],new Vector3(0,1,0)),"influence limit keeps only the strongest bone");
+Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{(float[])null,(float[])null},4,shift).positions[0],new Vector3(3,0,0)),"vertex without a usable bone follows the renderer matrix");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

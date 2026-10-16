@@ -331,7 +331,119 @@ internal sealed class CoverageFitter
         return new CoverageGeometry.SkinInfo(linear, index, weight);
     }
 
-    private static (CoverageGeometry.Surface surface, V3[] normals) Capture(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)
+    private readonly Dictionary<(int, int, int), Skinning.MeshData> meshData = new();
+    private readonly Dictionary<int, float> skinChecked = new();
+
+    // BakeMesh stays as the reference; Managed computes the same surface in plain C# (no mesh swap, no native bake); Check runs both and logs the difference.
+    private (CoverageGeometry.Surface surface, V3[] normals) Capture(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)
+    {
+        string kind = Plugin.Skinning.Value;
+        if (kind == "BakeMesh") return CaptureBaked(renderer, original, parts, opacities);
+        // Check only pays for the managed surface when its result will actually be logged.
+        if (kind == "Check" && skinChecked.TryGetValue(renderer.GetInstanceID(), out float lastCheck) && Time.unscaledTime < lastCheck + 30) return CaptureBaked(renderer, original, parts, opacities);
+        var managed = CaptureManaged(renderer, original, parts, opacities);
+        if (kind == "Managed")
+        {
+            if (managed != null) return managed.Value;
+            if (warnings.Add("managed:" + renderer.GetInstanceID())) Plugin.Logger.LogWarning($"Managed skinning unavailable for '{renderer.name}'; using BakeMesh.");
+        }
+        var baked = CaptureBaked(renderer, original, parts, opacities);
+        if (managed != null) CheckSkinning(renderer, baked.surface.Vertices, managed.Value.surface.Vertices);
+        return baked;
+    }
+
+    private (CoverageGeometry.Surface surface, V3[] normals)? CaptureManaged(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities)
+    {
+        var bones = BoneMatrices(renderer, original);
+        if (bones == null) return null;
+        // Keyed by id and sizes so a mesh rewritten in place (character editor) is read again.
+        var key = (original.GetInstanceID(), original.vertexCount, original.blendShapeCount);
+        if (!meshData.TryGetValue(key, out var data)) meshData[key] = data = BuildMeshData(original);
+        if (data == null) return null;
+        // renderer.quality 0 (Auto) defers to the project setting; boneWeights holds at most 4 influences either way.
+        int influences = (int)renderer.quality; if (influences == 0) influences = (int)QualitySettings.skinWeights;
+        var root = renderer.localToWorldMatrix;
+        var (positions, normals) = Skinning.Skin(data, i => renderer.GetBlendShapeWeight(i), bones, Math.Clamp(influences, 1, 4),
+            new[] { root.m00, root.m01, root.m02, root.m03, root.m10, root.m11, root.m12, root.m13, root.m20, root.m21, root.m22, root.m23 });
+        var triangles = new int[original.subMeshCount][];
+        for (int i = 0; i < triangles.Length; i++) triangles[i] = parts.Contains(i) ? original.GetTriangles(i).ToArray() : Array.Empty<int>();
+        var uv = opacities != null && opacities.Any(x => x != null) ? original.uv.Select(v => new V2(v.x, v.y)).ToArray() : null;
+        return (new CoverageGeometry.Surface(positions, triangles, uv, opacities), normals);
+    }
+
+    private static Skinning.MeshData BuildMeshData(Mesh mesh)
+    {
+        var vertices = mesh.vertices; var normals = mesh.normals; var weights = mesh.boneWeights;
+        int n = vertices.Length;
+        if (n == 0 || weights.Length != n) return null;
+        var rest = new V3[n]; var normal = normals.Length == n ? new V3[n] : Array.Empty<V3>();
+        var index = new int[n * 4]; var weight = new float[n * 4];
+        for (int i = 0; i < n; i++)
+        {
+            rest[i] = new V3(vertices[i].x, vertices[i].y, vertices[i].z);
+            if (normal.Length > 0) normal[i] = new V3(normals[i].x, normals[i].y, normals[i].z);
+            var w = weights[i];
+            index[i * 4] = w.boneIndex0; index[i * 4 + 1] = w.boneIndex1; index[i * 4 + 2] = w.boneIndex2; index[i * 4 + 3] = w.boneIndex3;
+            weight[i * 4] = w.weight0; weight[i * 4 + 1] = w.weight1; weight[i * 4 + 2] = w.weight2; weight[i * 4 + 3] = w.weight3;
+        }
+        // Read each blend shape frame once and keep only the non-zero deltas; the same three arrays are reused for every frame.
+        var shapes = new List<Skinning.Shape>();
+        var dv = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(n);
+        var dn = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(n);
+        var dt = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(n);
+        for (int s = 0; s < mesh.blendShapeCount; s++)
+        {
+            var frames = new List<Skinning.ShapeFrame>();
+            for (int f = 0; f < mesh.GetBlendShapeFrameCount(s); f++)
+            {
+                mesh.GetBlendShapeFrameVertices(s, f, dv, dn, dt);
+                var at = new List<int>(); var delta = new List<V3>();
+                var span = dv.AsSpan();
+                for (int i = 0; i < n; i++)
+                {
+                    var d = span[i];
+                    if (d.x != 0 || d.y != 0 || d.z != 0) { at.Add(i); delta.Add(new V3(d.x, d.y, d.z)); }
+                }
+                frames.Add(new Skinning.ShapeFrame(mesh.GetBlendShapeFrameWeight(s, f), at.ToArray(), delta.ToArray()));
+            }
+            if (frames.Any(f => f.Index.Length > 0)) shapes.Add(new Skinning.Shape(s, frames.ToArray()));
+        }
+        return new Skinning.MeshData(rest, normal, index, weight, shapes.ToArray());
+    }
+
+    // 3x4 row-major world-from-rest matrices: bone.localToWorld * bindpose.
+    private static float[][] BoneMatrices(SkinnedMeshRenderer renderer, Mesh mesh)
+    {
+        var bones = renderer.bones; var bind = mesh.bindposes;
+        if (bones == null || bind == null || bones.Length != bind.Length) return null;
+        var result = new float[bones.Length][];
+        for (int i = 0; i < bones.Length; i++)
+        {
+            if (bones[i] == null) continue;
+            var a = bones[i].localToWorldMatrix; var b = bind[i];
+            result[i] = new[]
+            {
+                a.m00 * b.m00 + a.m01 * b.m10 + a.m02 * b.m20, a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21, a.m00 * b.m02 + a.m01 * b.m12 + a.m02 * b.m22, a.m00 * b.m03 + a.m01 * b.m13 + a.m02 * b.m23 + a.m03,
+                a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20, a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21, a.m10 * b.m02 + a.m11 * b.m12 + a.m12 * b.m22, a.m10 * b.m03 + a.m11 * b.m13 + a.m12 * b.m23 + a.m13,
+                a.m20 * b.m00 + a.m21 * b.m10 + a.m22 * b.m20, a.m20 * b.m01 + a.m21 * b.m11 + a.m22 * b.m21, a.m20 * b.m02 + a.m21 * b.m12 + a.m22 * b.m22, a.m20 * b.m03 + a.m21 * b.m13 + a.m22 * b.m23 + a.m23
+            };
+        }
+        return result;
+    }
+
+    private void CheckSkinning(SkinnedMeshRenderer renderer, V3[] baked, V3[] managed)
+    {
+        int id = renderer.GetInstanceID();
+        if (skinChecked.TryGetValue(id, out float last) && Time.unscaledTime < last + 30) return;
+        skinChecked[id] = Time.unscaledTime;
+        if (baked.Length != managed.Length || baked.Length == 0) { Plugin.Logger.LogWarning($"Skinning check '{renderer.name}': vertex count differs ({baked.Length} vs {managed.Length})."); return; }
+        var error = new float[baked.Length];
+        for (int i = 0; i < error.Length; i++) error[i] = (baked[i] - managed[i]).Length() * 1000;
+        Array.Sort(error);
+        Plugin.Logger.LogInfo($"Skinning check '{renderer.name}': {error.Length} vertices, error mm mean {error.Average():F3}, p99.9 {error[(int)((error.Length - 1) * .999)]:F3}, max {error[^1]:F3}.");
+    }
+
+    private static (CoverageGeometry.Surface surface, V3[] normals) CaptureBaked(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)
     {
         var baked = new Mesh();
         var previous = renderer.sharedMesh;
@@ -362,6 +474,7 @@ internal sealed class CoverageFitter
         foreach (var state in states.Values) Release(state);
         states.Clear();
         alpha.Clear();
+        meshData.Clear(); skinChecked.Clear();
     }
     private static void Release(State s)
     {

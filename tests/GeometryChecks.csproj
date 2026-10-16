@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net6.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><CheckEolTargetFramework>false</CheckEolTargetFramework></PropertyGroup>
-  <ItemGroup><Compile Include="../CoverageGeometry.cs" Link="CoverageGeometry.cs" /><Compile Include="../ClothingOrder.cs" Link="ClothingOrder.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../CoverageGeometry.cs" Link="CoverageGeometry.cs" /><Compile Include="../ClothingOrder.cs" Link="ClothingOrder.cs" /><Compile Include="../Skinning.cs" Link="Skinning.cs" /></ItemGroup>
 </Project>
