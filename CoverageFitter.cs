@@ -348,7 +348,7 @@ internal sealed class CoverageFitter
             if (warnings.Add("managed:" + renderer.GetInstanceID())) Plugin.Logger.LogWarning($"Managed skinning unavailable for '{renderer.name}'; using BakeMesh.");
         }
         var baked = CaptureBaked(renderer, original, parts, opacities);
-        if (managed != null) CheckSkinning(renderer, baked.surface.Vertices, managed.Value.surface.Vertices);
+        if (managed != null) CheckSkinning(renderer, original, baked.surface.Vertices, managed.Value.surface.Vertices);
         return baked;
     }
 
@@ -408,6 +408,15 @@ internal sealed class CoverageFitter
             }
             if (frames.Any(f => f.Index.Length > 0)) shapes.Add(new Skinning.Shape(s, frames.ToArray()));
         }
+        // Diagnostic: the legacy boneWeights API keeps at most 4 influences; report how many vertices have more.
+        try
+        {
+            var counts = mesh.GetBonesPerVertex();
+            int over = 0, most = 0;
+            for (int i = 0; i < counts.Length; i++) { int c = counts[i]; if (c > 4) over++; if (c > most) most = c; }
+            Plugin.Logger.LogInfo($"Skinning data '{mesh.name}': {n} vertices, {shapes.Count} blend shapes with deltas, vertices with more than 4 bone influences: {over} (max {most}).");
+        }
+        catch (Exception ex) { Plugin.Logger.LogInfo($"Skinning data '{mesh.name}': bones-per-vertex unavailable ({ex.GetType().Name})."); }
         return new Skinning.MeshData(rest, normal, index, weight, shapes.ToArray());
     }
 
@@ -431,7 +440,7 @@ internal sealed class CoverageFitter
         return result;
     }
 
-    private void CheckSkinning(SkinnedMeshRenderer renderer, V3[] baked, V3[] managed)
+    private void CheckSkinning(SkinnedMeshRenderer renderer, Mesh original, V3[] baked, V3[] managed)
     {
         int id = renderer.GetInstanceID();
         if (skinChecked.TryGetValue(id, out float last) && Time.unscaledTime < last + 30) return;
@@ -439,8 +448,20 @@ internal sealed class CoverageFitter
         if (baked.Length != managed.Length || baked.Length == 0) { Plugin.Logger.LogWarning($"Skinning check '{renderer.name}': vertex count differs ({baked.Length} vs {managed.Length})."); return; }
         var error = new float[baked.Length];
         for (int i = 0; i < error.Length; i++) error[i] = (baked[i] - managed[i]).Length() * 1000;
-        Array.Sort(error);
-        Plugin.Logger.LogInfo($"Skinning check '{renderer.name}': {error.Length} vertices, error mm mean {error.Average():F3}, p99.9 {error[(int)((error.Length - 1) * .999)]:F3}, max {error[^1]:F3}.");
+        // Vertices off by more than 1 mm, and how many of those sit on a vertex moved by an active blend shape.
+        int bad = 0, badOnShape = 0, activeShapes = 0;
+        var touched = new bool[baked.Length];
+        if (meshData.TryGetValue((original.GetInstanceID(), original.vertexCount, original.blendShapeCount), out var data) && data != null)
+            foreach (var shape in data.Shapes)
+                if (renderer.GetBlendShapeWeight(shape.ShapeIndex) != 0)
+                {
+                    activeShapes++;
+                    foreach (var frame in shape.Frames) foreach (int i in frame.Index) touched[i] = true;
+                }
+        for (int i = 0; i < error.Length; i++) if (error[i] > 1) { bad++; if (touched[i]) badOnShape++; }
+        var sorted = (float[])error.Clone();
+        Array.Sort(sorted);
+        Plugin.Logger.LogInfo($"Skinning check '{renderer.name}': {error.Length} vertices, error mm mean {error.Average():F3}, p99.9 {sorted[(int)((sorted.Length - 1) * .999)]:F3}, max {sorted[^1]:F3}; over 1 mm: {bad} ({badOnShape} on blend-shape vertices, {activeShapes} shapes active).");
     }
 
     private static (CoverageGeometry.Surface surface, V3[] normals) CaptureBaked(SkinnedMeshRenderer renderer, Mesh original, int[] parts, CoverageGeometry.Opacity[] opacities = null)
