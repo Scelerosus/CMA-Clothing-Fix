@@ -24,7 +24,7 @@ internal sealed class CoverageFitter
     }
     private readonly Dictionary<int, State> states = new();
     private readonly HashSet<string> warnings = new();
-    private readonly HashSet<string> loggedOutfits = new();
+    private readonly HashSet<string> loggedOutfits = new(), loggedOutfitLines = new(), shadersProbed = new();
     private readonly AlphaCoverage alpha = new();
     internal int ActiveMasks => states.Values.Count(s => s.Replacement != null);
     internal int PendingMasks => states.Values.Count(s => !s.Finished);
@@ -48,7 +48,8 @@ internal sealed class CoverageFitter
                 && OriginalMesh(r) != null && outfit.Items.TryGetValue(outfit.OwnerOf(r), out var item) && item.Visible && item.Layer >= 0).ToArray();
             string signature = outfit.Signature();
             // One compact line per outfit change so problems can be diagnosed from LogOutput.log without saving a report.
-            if (loggedOutfits.Add(signature))
+            if (loggedOutfits.Add(signature)) ProbeShaders(outfit);
+            if (loggedOutfits.Contains(signature) && loggedOutfitLines.Add(signature))
                 Plugin.Logger.LogInfo("Outfit: " + string.Join("; ", outfit.Items.Values.OrderBy(x => x.Layer).ThenBy(x => x.Kind)
                     .Select(x => $"{x.Id} [{x.Kind} L{x.Layer} {(x.Visible ? "on" : "off")} {x.Coverage}]")));
             // Reach scales with the character so tall/short models get proportional windows.
@@ -90,6 +91,31 @@ internal sealed class CoverageFitter
         }
         foreach (int id in states.Keys.Where(x => !wanted.Contains(x)).ToArray()) { Release(states[id]); states.Remove(id); }
         alpha.End();
+    }
+
+    // Experiment (depth offset / stencil): list the depth, stencil, cull and height related properties of each distinct shader in use,
+    // with this material's current values, so we can tell which render state could be changed per material without a custom shader.
+    private void ProbeShaders(Outfit outfit)
+    {
+        var pattern = new System.Text.RegularExpressions.Regex("depth|ztest|zwrite|stencil|bias|offset|cull|height|tess|displac|priority|queue|surface|alpha", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        foreach (var renderer in outfit.Renderers)
+            foreach (var material in renderer.sharedMaterials)
+            {
+                if (material == null || material.shader == null || !shadersProbed.Add(material.shader.name)) continue;
+                var shader = material.shader; var found = new List<string>();
+                try
+                {
+                    for (int i = 0; i < shader.GetPropertyCount(); i++)
+                    {
+                        string name = shader.GetPropertyName(i);
+                        if (!pattern.IsMatch(name)) continue;
+                        int type = (int)shader.GetPropertyType(i); // 0 color, 1 vector, 2 float, 3 range, 4 texture, 5 int
+                        found.Add(type is 2 or 3 or 5 ? $"{name}={material.GetFloat(name):0.###}" : $"{name}[{type}]");
+                    }
+                    Plugin.Logger.LogInfo($"Shader probe '{shader.name}' (material '{material.name}', queue {material.renderQueue}, {shader.GetPropertyCount()} properties): {string.Join(", ", found)}; keywords: {string.Join(" ", material.shaderKeywords)}");
+                }
+                catch (Exception ex) { Plugin.Logger.LogInfo($"Shader probe '{shader.name}' failed: {ex.GetType().Name}"); }
+            }
     }
 
     // Inflate mode: the body skin is the fixed reference and every worn garment is lifted off it; the body itself is never touched.

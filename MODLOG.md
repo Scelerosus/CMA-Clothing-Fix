@@ -180,3 +180,6 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.9.4 — Managed skinning is the default
 - 0.9.3 Check results: body, G-string, dress, stockings, bracelet, piercing and shoes match BakeMesh to <= 0.015 mm (p99.9) / 0.015 mm (max); the 0.9.0-0.9.2 mismatch was the 4-influence limit (Unlimited skin weights). The hoodie was not worn in that session.
 - Default `Skinning = Managed`: no native bake and no sharedMesh swap per capture. Each renderer is compared with BakeMesh once on first use; if p99.9 exceeds 1 mm it is added to a bad list, a warning is logged and BakeMesh is used for it from then on. `Check` and `BakeMesh` remain available. Not yet verified for the hoodie in game.
+
+## 0.9.5 — shader probe (experiment: depth offset / stencil)
+- Managed skinning verified on every worn item incl. the hoodie (p99.9 <= 0.012 mm), no fallbacks. Experiment 1 starts with measurement: one `Shader probe` log line per distinct shader in the outfit lists the depth/ztest/zwrite/stencil/bias/offset/cull/height/tessellation/priority/surface/alpha properties with this material current values, the render queue and the enabled keywords. No behaviour change; the next step depends on what these shaders expose.
