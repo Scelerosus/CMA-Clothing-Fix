@@ -172,3 +172,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 ## 0.9.2 — blend shape probe
 - 0.9.1 logs: vertices with more than 4 influences exist on hoodie (29,765, max 8), dress (1,647), G-string (421) and even body (207), yet the body matches BakeMesh to 0.02 mm, so influence truncation is not the cause. Every vertex off by > 1 mm (G-string 26, dress 124, hoodie ~4,870) lies on a vertex moved by an active blend shape.
 - 0.9.2 adds a one-off `Shape probe` per mismatching renderer: managed surface with each active shape left out in turn, and with weights clamped to 0..100, each compared with BakeMesh, plus shape name, weight, frame count, first frame weight and delta count. Behaviour unchanged.
+
+## 0.9.3 — full bone influences in managed skinning
+- 0.9.2 probe: leaving out any single blend shape never removes the G-string/dress mismatch (BODY_Fat p even helps), weights clamped to 0..100 change nothing, and BODY_Fat p touches 4,499 of 4,514 dress vertices, so the earlier blend-shape correlation was meaningless. Remaining hypothesis: Unity skins with all influences (QualitySettings.skinWeights = Unlimited) while the managed path used the legacy 4-influence boneWeights.
+- 0.9.3 reads GetBonesPerVertex/GetAllBoneWeights into a variable-length layout (Skinning.MeshData.Start) and applies the renderer quality or QualitySettings.skinWeights (1, 2, 4 or 255). The probe logs the quality values and the error for 4 influences vs all influences. One new managed check. Not verified in game.

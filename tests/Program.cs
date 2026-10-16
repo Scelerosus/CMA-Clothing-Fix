@@ -98,6 +98,9 @@ Check(Near(Skinning.Skin(SkinMesh(one),_=>0,new[]{I,I}).positions[0],new Vector3
 Check(Near(Skinning.Skin(SkinMesh(two),_=>150,new[]{I,I}).positions[0],new Vector3(1,7,0)),"multi-frame blend shape extrapolates beyond the last frame");
 Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{I,shift},1).positions[1],new Vector3(0,1,0)),"influence limit keeps only the strongest bone");
 Check(Near(Skinning.Skin(SkinMesh(),_=>0,new[]{(float[])null,(float[])null},4,shift).positions[0],new Vector3(3,0,0)),"vertex without a usable bone follows the renderer matrix");
+var fiveBones = new Skinning.MeshData(new[]{Vector3.Zero},new[]{Vector3.UnitX},new[]{0,1,1,1,1},new[]{.2f,.2f,.2f,.2f,.2f},Array.Empty<Skinning.Shape>(),new[]{0,5});
+Check(Near(Skinning.Skin(fiveBones,_=>0,new[]{shift,I},4).positions[0],new Vector3(.5f,0,0)) && Near(Skinning.Skin(fiveBones,_=>0,new[]{shift,I},255).positions[0],new Vector3(.4f,0,0)),
+    "five influences: limited to 4 renormalises, unlimited uses all");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

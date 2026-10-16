@@ -404,15 +404,22 @@ internal sealed class CoverageFitter
             }
             if (frames.Any(f => f.Index.Length > 0)) shapes.Add(new Skinning.Shape(s, frames.ToArray()));
         }
-        // Diagnostic: the legacy boneWeights API keeps at most 4 influences; report how many vertices have more.
+        // boneWeights keeps at most 4 influences; with QualitySettings.skinWeights = Unlimited Unity skins with all of them, so read the full list.
         try
         {
-            var counts = mesh.GetBonesPerVertex();
+            var counts = mesh.GetBonesPerVertex(); var all = mesh.GetAllBoneWeights();
+            var start = new int[n + 1];
             int over = 0, most = 0;
-            for (int i = 0; i < counts.Length; i++) { int c = counts[i]; if (c > 4) over++; if (c > most) most = c; }
-            Plugin.Logger.LogInfo($"Skinning data '{mesh.name}': {n} vertices, {shapes.Count} blend shapes with deltas, vertices with more than 4 bone influences: {over} (max {most}).");
+            for (int i = 0; i < n; i++) { int c = counts[i]; start[i + 1] = start[i] + c; if (c > 4) over++; if (c > most) most = c; }
+            if (counts.Length == n && start[n] == all.Length)
+            {
+                var allIndex = new int[all.Length]; var allWeight = new float[all.Length];
+                for (int k = 0; k < all.Length; k++) { var bw = all[k]; allIndex[k] = bw.boneIndex; allWeight[k] = bw.weight; }
+                Plugin.Logger.LogInfo($"Skinning data '{mesh.name}': {n} vertices, {shapes.Count} blend shapes with deltas, {over} vertices with more than 4 bone influences (max {most}).");
+                return new Skinning.MeshData(rest, normal, allIndex, allWeight, shapes.ToArray(), start);
+            }
         }
-        catch (Exception ex) { Plugin.Logger.LogInfo($"Skinning data '{mesh.name}': bones-per-vertex unavailable ({ex.GetType().Name})."); }
+        catch (Exception ex) { Plugin.Logger.LogInfo($"Skinning data '{mesh.name}': full bone weights unavailable ({ex.GetType().Name}); using 4 influences."); }
         return new Skinning.MeshData(rest, normal, index, weight, shapes.ToArray());
     }
 
@@ -436,11 +443,11 @@ internal sealed class CoverageFitter
         return result;
     }
 
-    // renderer.quality 0 (Auto) defers to the project setting; boneWeights holds at most 4 influences either way.
+    // renderer.quality 0 (Auto) defers to the project setting (1, 2, 4 or 255 = unlimited).
     private static int Influences(SkinnedMeshRenderer renderer)
     {
         int influences = (int)renderer.quality; if (influences == 0) influences = (int)QualitySettings.skinWeights;
-        return Math.Clamp(influences, 1, 4);
+        return Math.Clamp(influences, 1, 255);
     }
 
     private static float[] RootMatrix(SkinnedMeshRenderer renderer)
@@ -468,7 +475,8 @@ internal sealed class CoverageFitter
             Array.Sort(e);
             return $"p99.9 {e[(int)((e.Length - 1) * .999)]:F3} max {e[^1]:F3}";
         }
-        var log = new System.Text.StringBuilder($"Shape probe '{renderer.name}': all weights as read: {Err(i => weights[i])}; weights clamped to 0..100: {Err(i => Math.Clamp(weights[i], 0, 100))}.");
+        string Limited(int k) { var (positions, _) = Skinning.Skin(data, i => weights[i], bones, k, root); var e = new float[baked.Length]; for (int i = 0; i < e.Length; i++) e[i] = (baked[i] - positions[i]).Length() * 1000; Array.Sort(e); return $"p99.9 {e[(int)((e.Length - 1) * .999)]:F3} max {e[^1]:F3}"; }
+        var log = new System.Text.StringBuilder($"Shape probe '{renderer.name}': renderer.quality {(int)renderer.quality}, QualitySettings.skinWeights {(int)QualitySettings.skinWeights}, used {influences}; all weights as read: {Err(i => weights[i])}; weights clamped to 0..100: {Err(i => Math.Clamp(weights[i], 0, 100))}; limited to 4 influences: {Limited(4)}; all influences: {Limited(255)}.");
         foreach (var shape in data.Shapes)
         {
             if (weights[shape.ShapeIndex] == 0) continue;

@@ -8,8 +8,8 @@ internal static class Skinning
     // Sparse blend shape: per frame the frame weight and the non-zero position deltas.
     internal sealed record ShapeFrame(float Weight, int[] Index, Vector3[] Delta);
     internal sealed record Shape(int ShapeIndex, ShapeFrame[] Frames);
-    // Index/Weight hold 4 bone influences per vertex.
-    internal sealed record MeshData(Vector3[] Rest, Vector3[] Normals, int[] Index, float[] Weight, Shape[] Shapes);
+    // Index/Weight hold 4 bone influences per vertex, or, when Start is given, Start[v]..Start[v+1] influences per vertex (sorted by weight, descending).
+    internal sealed record MeshData(Vector3[] Rest, Vector3[] Normals, int[] Index, float[] Weight, Shape[] Shapes, int[] Start = null);
 
     // Bones are 3x4 row-major world-from-rest matrices: (bone.localToWorld * bindpose), 12 floats each.
     // maxInfluences mirrors the renderer quality / QualitySettings.skinWeights (the first slots are the largest weights);
@@ -29,9 +29,10 @@ internal static class Skinning
         for (int v = 0; v < n; v++)
         {
             Vector3 p = default, nrm = default; float total = 0;
-            for (int k = 0; k < Math.Clamp(maxInfluences, 1, 4); k++)
+            int begin = mesh.Start == null ? v * 4 : mesh.Start[v], count = mesh.Start == null ? 4 : mesh.Start[v + 1] - mesh.Start[v];
+            for (int k = 0; k < Math.Min(count, Math.Max(maxInfluences, 1)); k++)
             {
-                float w = mesh.Weight[v * 4 + k]; int b = mesh.Index[v * 4 + k];
+                float w = mesh.Weight[begin + k]; int b = mesh.Index[begin + k];
                 if (w <= 0 || b < 0 || b >= bones.Length || bones[b] == null) continue;
                 var m = bones[b]; var s = shaped[v]; var r = mesh.Normals.Length == n ? mesh.Normals[v] : Vector3.Zero;
                 p += w * new Vector3(m[0] * s.X + m[1] * s.Y + m[2] * s.Z + m[3], m[4] * s.X + m[5] * s.Y + m[6] * s.Z + m[7], m[8] * s.X + m[9] * s.Y + m[10] * s.Z + m[11]);
