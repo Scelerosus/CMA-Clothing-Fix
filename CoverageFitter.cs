@@ -222,7 +222,7 @@ internal sealed class CoverageFitter
             // tessellated skin shader displaces the surface a few millimetres beyond the mesh.
             bool tight = item.Layer <= 1;
             Request(scale, footY, target, refs.ToArray(), refParts.ToArray(), refOpacity.ToArray(),
-                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .0007f * scale : .003f * scale, tight ? .015f * scale : 0, inflateRefs: 1);
+                parts, signature, wanted, false, false, null, ref capturesLeft, tight ? .004f * scale : .003f * scale, tight ? .015f * scale : 0, inflateRefs: 1);
         }
     }
 
