@@ -139,3 +139,7 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.6.2 — self-diagnosing log
 - One `Outfit:` log line per outfit change (item id, kind, layer, visible, coverage flags) and each `Coverage` line now names the outer renderers, so problems can be read from LogOutput.log without saving a report by hand. Not verified in game.
+
+## 0.7.0 — Inflate mode
+- Report evidence: the game already fits garments (hoodie SMA_BreastSize_110/125 blended ~32/68%, others follow PHYSICS_SCALER_Pecho bones); what remains is imperfect fit at large sizes, i.e. garment vertices sinking below the skin. New `Mode = Inflate`: the body skin (Skin_Body/Pezones submeshes) is the fixed reference and every worn garment vertex that lies below it (within `PushMaxCm`, default 3 cm scaled) is lifted along the skin outward normal to 1.5 mm above the surface. Nothing is deleted, no layer rules or item lists, the body is never modified, body jewellery/accessories are skipped. Garment vertices whose normal disagrees with the skin normal are left alone. Offsets go through the same per-vertex skin matrix path as Push; rest vertices are cached per state.
+- Five managed checks added. Not verified in game. Risks: per-pose snapshot like Push; rewriting large garments (hoodie 118k vertices) through the IL2CPP indexer may cost frame time; garment-vs-garment poke-through is still left to Hide/Snap.

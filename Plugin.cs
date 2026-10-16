@@ -11,7 +11,7 @@ namespace CMAClothingFix;
 public sealed class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
-    internal const string Version = "0.6.2"; // keep equal to <Version> in the csproj
+    internal const string Version = "0.7.0"; // keep equal to <Version> in the csproj
     internal static ConfigEntry<bool> Enabled, Diagnostics;
     internal static ConfigEntry<bool> ExperimentalCoverage;
     internal static ConfigEntry<float> RefreshSeconds, CoverReachCm, CoverDepthCm, CoverHemKeepCm, PushMaxCm;
@@ -31,7 +31,7 @@ public sealed class Plugin : BasePlugin
         CoverReachCm = Config.Bind("Coverage", "CoverReachCm", 2f, new ConfigDescription("How far above the skin (cm, for a 170 cm character) a garment may float and still hide skin beneath it. Lower keeps more skin near loose cups.", new AcceptableValueRange<float>(.5f, 6f)));
         CoverDepthCm = Config.Bind("Coverage", "CoverDepthCm", 5f, new ConfigDescription("How deep below the skin (cm, for a 170 cm character) a garment may sink and still hide the skin over it. Raise for very large busts.", new AcceptableValueRange<float>(1f, 10f)));
         CoverHemKeepCm = Config.Bind("Coverage", "CoverHemKeepCm", 1f, new ConfigDescription("Cloth this far (cm, for a 170 cm character) below the lower hem of an outer garment is left visible, which avoids jagged cuts under thick hems. 0 disables.", new AcceptableValueRange<float>(0f, 8f)));
-        Mode = Config.Bind("Coverage", "Mode", "Hide", new ConfigDescription("Hide deletes covered triangles (jagged edges possible). Snap = Hide plus sliding boundary vertices to the garment edge for smooth cuts. Push keeps all geometry and moves vertices that poke through an outer garment back under it (experimental).", new AcceptableValueList<string>("Hide", "Snap", "Push")));
+        Mode = Config.Bind("Coverage", "Mode", "Hide", new ConfigDescription("Hide deletes covered triangles (jagged edges possible). Snap = Hide plus sliding boundary vertices to the garment edge for smooth cuts. Inflate keeps all geometry and lifts garments that sank into the skin out to just above it (experimental, no layer rules). Push keeps all geometry and moves vertices that poke through an outer garment back under it (experimental).", new AcceptableValueList<string>("Hide", "Snap", "Push", "Inflate")));
         PushMaxCm = Config.Bind("Coverage", "PushMaxCm", 3f, new ConfigDescription("Push mode: largest poke-through (cm, for a 170 cm character) that is pushed back. Larger pokes are ignored.", new AcceptableValueRange<float>(.5f, 8f)));
         MenuKey = Config.Bind("Keys", "Menu", KeyCode.Slash, "Open clipping menu.");
         RulesPath = Path.Combine(Paths.ConfigPath, "CMAClothingFix.rules.json");

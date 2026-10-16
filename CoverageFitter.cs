@@ -20,6 +20,7 @@ internal sealed class CoverageFitter
         internal bool Finished;
         internal int[][] Kept;
         internal V3[] Offsets;
+        internal Vector3[] Rest;
     }
     private readonly Dictionary<int, State> states = new();
     private readonly HashSet<string> warnings = new();
@@ -56,6 +57,7 @@ internal sealed class CoverageFitter
             // shortcut: assumes a standing pose; lying poses stop masking skin entirely.
             float footY = bodies.Length == 0 ? float.NegativeInfinity : bodies.Min(r => r.bounds.min.y) + .14f * 1.7f * scale;
             var coverage = garments.ToDictionary(r => r.GetInstanceID(), r => CoverageParts(r, OriginalMesh(r)));
+            if (Plugin.Mode.Value == "Inflate") { Inflate(outfit, garments, bodies, signature, scale, wanted, ref capturesLeft); continue; }
             foreach (var target in outfit.Renderers.OrderBy(r => outfit.OwnerOf(r) == "@body" ? 1 : 0))
             {
                 if (!target.enabled || !target.gameObject.activeInHierarchy || target.forceRenderingOff) continue;
@@ -85,6 +87,31 @@ internal sealed class CoverageFitter
         }
         foreach (int id in states.Keys.Where(x => !wanted.Contains(x)).ToArray()) { Release(states[id]); states.Remove(id); }
         alpha.End();
+    }
+
+    // Inflate mode: the body skin is the fixed reference and every worn garment is lifted off it; the body itself is never touched.
+    private void Inflate(Outfit outfit, SkinnedMeshRenderer[] garments, SkinnedMeshRenderer[] bodies, string signature, float scale, HashSet<int> wanted, ref int capturesLeft)
+    {
+        var skin = bodies.Where(r => r.enabled && OriginalMesh(r) != null && OriginalMesh(r).isReadable
+            && r.sharedMaterials.Any(m => m != null && m.name.StartsWith("Skin_Body", StringComparison.Ordinal))).FirstOrDefault();
+        if (skin == null) return;
+        var skinMesh = OriginalMesh(skin);
+        var materials = skin.sharedMaterials;
+        var skinParts = Enumerable.Range(0, skinMesh.subMeshCount).Where(i => skinMesh.GetTopology(i) == MeshTopology.Triangles && i < materials.Length && materials[i] != null
+            && (materials[i].name.StartsWith("Skin_Body", StringComparison.Ordinal) || materials[i].name.StartsWith("Pezones", StringComparison.Ordinal))).ToArray();
+        if (skinParts.Length == 0) return;
+        foreach (var target in garments)
+        {
+            var item = outfit.Items[outfit.OwnerOf(target)];
+            // Body jewellery and loose accessories sit in or on the skin on purpose.
+            if (item.Kind is ClothingOrder.Kind.UpperUnderwearAccessory or ClothingOrder.Kind.LowerUnderwearAccessory or ClothingOrder.Kind.Accessories) continue;
+            var mesh = OriginalMesh(target);
+            if (!mesh.isReadable) continue;
+            var parts = Enumerable.Range(0, mesh.subMeshCount).Where(i => mesh.GetTopology(i) == MeshTopology.Triangles).ToArray();
+            if (parts.Length == 0) continue;
+            Request(scale, float.NegativeInfinity, target, new[] { skin }, new[] { skinParts }, new[] { new CoverageGeometry.Opacity[skinMesh.subMeshCount] },
+                parts, signature, wanted, false, false, null, ref capturesLeft);
+        }
     }
 
     private void Request(float scale, float footY, SkinnedMeshRenderer target, SkinnedMeshRenderer[] covers, int[][] coverParts, CoverageGeometry.Opacity[][] opacities,
@@ -118,9 +145,15 @@ internal sealed class CoverageFitter
                 var toes = body ? VisibleExtremities(target, original, Toes) : null;
                 var surfaces = covers.Select((r, i) => Capture(r, coverOriginals[i], coverParts[i], opacities[i]).surface).ToArray();
                 var token = state.Cancel.Token;
-                bool push = Plugin.Mode.Value == "Push", snap = Plugin.Mode.Value == "Snap";
-                var skin = push || snap ? CaptureSkin(target, original) : null;
-                state.Job = push ? Task.Run(async () =>
+                bool inflate = Plugin.Mode.Value == "Inflate", push = Plugin.Mode.Value == "Push", snap = Plugin.Mode.Value == "Snap";
+                var skin = push || snap || inflate ? CaptureSkin(target, original) : null;
+                state.Job = inflate ? Task.Run(async () =>
+                {
+                    await Worker.WaitAsync(token);
+                    try { return CoverageGeometry.Inflate(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, skin,
+                        Plugin.PushMaxCm.Value / 100 * scale, .0015f * scale, token); }
+                    finally { Worker.Release(); }
+                }, token) : push ? Task.Run(async () =>
                 {
                     await Worker.WaitAsync(token);
                     try { return CoverageGeometry.Push(input.surface, input.normals, CoverageGeometry.Combine(surfaces, token), parts, skin,
@@ -146,7 +179,7 @@ internal sealed class CoverageFitter
                     state.Kept = null; state.Offsets = null;
                     return;
                 }
-                if (result.Total == 0 || Plugin.Mode.Value != "Push" && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
+                if (result.Total == 0 || Plugin.Mode.Value is "Hide" or "Snap" && body && result.Removed >= result.Total * .85f) throw new InvalidOperationException("Body coverage exceeds 85%; refusing a nearly complete removal.");
                 if (target.sharedMesh != original && target.sharedMesh != state.Replacement) throw new InvalidOperationException("Target mesh changed while computing; result discarded.");
                 if (result.Offsets != null)
                 {
@@ -155,7 +188,7 @@ internal sealed class CoverageFitter
                     if (state.Offsets != null && state.Offsets.Length == result.Offsets.Length
                         && !result.Offsets.Where((o, i) => (o - state.Offsets[i]).LengthSquared() > 1e-6f).Any()
                         && (!snapMode || state.Kept != null && parts.All(sub => state.Kept[sub].AsSpan().SequenceEqual(result.Kept[sub])))) return;
-                    var rest = original.vertices;
+                    var rest = state.Rest ??= original.vertices.ToArray();
                     if (rest.Length != result.Offsets.Length) throw new InvalidOperationException("Vertex count changed while computing; result discarded.");
                     var moved = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(rest.Length);
                     for (int i = 0; i < rest.Length; i++) moved[i] = new Vector3(rest[i].x + result.Offsets[i].X, rest[i].y + result.Offsets[i].Y, rest[i].z + result.Offsets[i].Z);

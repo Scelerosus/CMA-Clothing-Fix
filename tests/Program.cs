@@ -61,6 +61,13 @@ var snapResult = CoverageGeometry.Mask(target,normals,Quad(-1,0,1,1),new[]{0},Ca
 Check(snapResult.Removed==0 && snapResult.Offsets!=null && Math.Abs(snapResult.Offsets[2].Y+.1f)<.01f && snapResult.Offsets[0]==Vector3.Zero && snapResult.Offsets[1]==Vector3.Zero,
     "covered boundary vertex snaps to the garment edge, uncovered vertices stay");
 Check(CoverageGeometry.Mask(target,normals,Quad(-1,0,1,1),new[]{0},CancellationToken.None).Offsets==null,"no snapping unless requested");
+CoverageGeometry.Result Inflate(CoverageGeometry.Surface body, Vector3[] n = null) => CoverageGeometry.Inflate(target,n ?? normals,body,new[]{0},Skin(),.03f,.002f,CancellationToken.None);
+var inflated = Inflate(Plane(.01f));
+Check(inflated.Removed==3 && Math.Abs(inflated.Offsets[0].Z-.012f)<1e-5f && inflated.Offsets[0].X==0,"garment sunk 1 cm into the skin is pushed out to 2 mm above it");
+Check(Inflate(Plane(-.02f)).Removed==0,"garment well above the skin is not moved");
+Check(Math.Abs(Inflate(Plane(-.001f)).Offsets[0].Z-.001f)<1e-5f,"garment just above the skin is lifted to the margin");
+Check(Inflate(Plane(.01f),Enumerable.Repeat(-Vector3.UnitZ,3).ToArray()).Removed==0,"inverted garment normals are left alone");
+Check(Inflate(Plane(.05f)).Removed==0,"skin farther than the push limit is ignored");
 var absent = new CoverageGeometry.Surface(Array.Empty<Vector3>(),new[]{Array.Empty<int>()});
 Check(Run(absent).Removed==0,"empty cover does not delete geometry");
 using var cancel = new CancellationTokenSource(); cancel.Cancel();

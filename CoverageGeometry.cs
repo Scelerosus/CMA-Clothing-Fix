@@ -284,11 +284,51 @@ internal static class CoverageGeometry
             var p = target.Vertices[v];
             // The closest cover surface along the normal, either side of the vertex, ignoring far sides of thin parts such as fingers.
             float best = float.NaN;
-            NearestHit(root, triangles, p + normal * maxPush, -normal, 2 * maxPush, maxPush, p.Y, ref best);
+            var ignored = Vector3.Zero;
+            NearestHit(root, triangles, p + normal * maxPush, -normal, 2 * maxPush, maxPush, p.Y, ref best, ref ignored);
             if (float.IsNaN(best)) continue;
             float need = best - maxPush + margin;
             if (need <= 0) continue;
             if (!Unskin(skin, v, -normal * need, out var rest)) continue;
+            offsets[v] = rest; moved++;
+        }
+        return new Result(target.Triangles, moved, total, null, offsets);
+    }
+
+    // Mirror of Push for garments: the body is always the innermost layer, so a garment vertex that sank below the skin surface
+    // is moved out along the skin's outward normal until it sits `margin` above it. No layer rules and nothing is deleted.
+    internal static Result Inflate(Surface target, Vector3[] normals, Surface body, int[] targetSubmeshes, SkinInfo skin, float maxPush, float margin, CancellationToken cancel)
+    {
+        cancel.ThrowIfCancellationRequested();
+        var (triangles, root) = BuildBvh(body, cancel);
+        int n = target.Vertices.Length;
+        if (triangles.Length == 0 || normals.Length != n || skin == null || skin.Index.Length != n * 4) return new Result(target.Triangles, 0, 0);
+        var used = new bool[n];
+        foreach (int sub in targetSubmeshes) foreach (int index in target.Triangles[sub]) used[index] = true;
+        var offsets = new Vector3[n];
+        int moved = 0, total = 0;
+        for (int v = 0; v < n; v++)
+        {
+            if (!used[v]) continue;
+            total++;
+            if ((v & 255) == 0) cancel.ThrowIfCancellationRequested();
+            float length = normals[v].LengthSquared();
+            if (!float.IsFinite(length) || length < 1e-12f) continue;
+            var normal = normals[v] / MathF.Sqrt(length);
+            var p = target.Vertices[v];
+            float best = float.NaN; var hit = Vector3.Zero;
+            NearestHit(root, triangles, p - normal * maxPush, normal, 2 * maxPush, maxPush, float.PositiveInfinity, ref best, ref hit);
+            if (float.IsNaN(best)) continue;
+            float hl = hit.LengthSquared();
+            if (!float.IsFinite(hl) || hl < 1e-18f) continue;
+            hit /= MathF.Sqrt(hl);
+            // Garment and skin must agree on which side is outside; otherwise (inverted normals) leave the vertex alone.
+            if (Vector3.Dot(hit, normal) <= 0) continue;
+            // Signed height of the vertex above the skin surface plane at the hit point.
+            float above = -(best - maxPush) * Vector3.Dot(hit, normal);
+            float need = margin - above;
+            if (need <= 0 || need > maxPush + margin) continue;
+            if (!Unskin(skin, v, hit * need, out var rest)) continue;
             offsets[v] = rest; moved++;
         }
         return new Result(target.Triangles, moved, total, null, offsets);
@@ -315,13 +355,13 @@ internal static class CoverageGeometry
         return float.IsFinite(rest.X) && float.IsFinite(rest.Y) && float.IsFinite(rest.Z);
     }
 
-    private static void NearestHit(Node node, Triangle[] triangles, Vector3 o, Vector3 d, float distance, float wanted, float targetY, ref float best)
+    private static void NearestHit(Node node, Triangle[] triangles, Vector3 o, Vector3 d, float distance, float wanted, float targetY, ref float best, ref Vector3 hitNormal)
     {
         if (!BoxHit(node.Min, node.Max, o, d, distance)) return;
-        if (node.Left != null) { NearestHit(node.Left, triangles, o, d, distance, wanted, targetY, ref best); NearestHit(node.Right, triangles, o, d, distance, wanted, targetY, ref best); return; }
+        if (node.Left != null) { NearestHit(node.Left, triangles, o, d, distance, wanted, targetY, ref best, ref hitNormal); NearestHit(node.Right, triangles, o, d, distance, wanted, targetY, ref best, ref hitNormal); return; }
         for (int i = node.Start; i < node.Start + node.Count; i++)
             if (targetY >= triangles[i].MinimumTargetY && TriangleRay(triangles[i], o, d, distance, out float t)
-                && (float.IsNaN(best) || Math.Abs(t - wanted) < Math.Abs(best - wanted))) best = t;
+                && (float.IsNaN(best) || Math.Abs(t - wanted) < Math.Abs(best - wanted))) { best = t; hitNormal = Vector3.Cross(triangles[i].B - triangles[i].A, triangles[i].C - triangles[i].A); }
     }
 
     private static bool TriangleRay(Triangle tri, Vector3 o, Vector3 d, float distance, out float t)
