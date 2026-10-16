@@ -183,3 +183,8 @@ Native layer coverage for all eligible garments; combined outer surfaces, period
 
 ## 0.9.5 — shader probe (experiment: depth offset / stencil)
 - Managed skinning verified on every worn item incl. the hoodie (p99.9 <= 0.012 mm), no fallbacks. Experiment 1 starts with measurement: one `Shader probe` log line per distinct shader in the outfit lists the depth/ztest/zwrite/stencil/bias/offset/cull/height/tessellation/priority/surface/alpha properties with this material current values, the render queue and the enabled keywords. No behaviour change; the next step depends on what these shaders expose.
+
+## 0.9.6 — skin displacement experiment
+- Shader probe: HDRP/Lit, LitTessellation and LayeredLitTessellation expose _DepthOffsetEnable (0) but it is tied to pixel displacement, and no depth bias or stencil comparison property exists; garments use alpha/opaque Lit with fixed stencil refs. A custom depth bias is therefore not available without a custom shader.
+- Key finding: body skin (Skin_Body, Pezones) is HDRP/LayeredLitTessellation with _DisplacementMode 3 (tessellation displacement) and _HeightTessAmplitude0-3 = 2, i.e. the visible skin is displaced by up to about 2 cm beyond the mesh the mod measures. That alone explains skin showing through clothing.
+- New `[Coverage] SkinDisplacementScale` (0..1, default 1 = unchanged) scales _HeightTessAmplitude0-3 on the body skin materials at runtime and restores the originals at 1. The user config is set to 0.25 for the first test. Not verified in game.

@@ -11,11 +11,12 @@ namespace CMAClothingFix;
 public sealed class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
-    internal const string Version = "0.9.5"; // keep equal to <Version> in the csproj
+    internal const string Version = "0.9.6"; // keep equal to <Version> in the csproj
     internal static ConfigEntry<bool> Enabled, Diagnostics;
     internal static ConfigEntry<bool> ExperimentalCoverage;
     internal static ConfigEntry<float> RefreshSeconds, CoverReachCm, CoverDepthCm, CoverHemKeepCm, PushMaxCm;
     internal static ConfigEntry<string> Mode, Skinning;
+    internal static ConfigEntry<float> SkinDisplacementScale;
     internal static ConfigEntry<KeyCode> MenuKey;
     internal static ConfigFile Settings;
     internal static string RulesPath, ReportsPath;
@@ -34,6 +35,7 @@ public sealed class Plugin : BasePlugin
         Mode = Config.Bind("Coverage", "Mode", "Hide", new ConfigDescription("Hide deletes covered triangles (jagged edges possible). Snap = Hide plus sliding boundary vertices to the garment edge for smooth cuts. Inflate keeps all geometry and lifts garments that sank into the skin out to just above it (experimental, no layer rules). Push keeps all geometry and moves vertices that poke through an outer garment back under it (experimental).", new AcceptableValueList<string>("Hide", "Snap", "Push", "Inflate")));
         PushMaxCm = Config.Bind("Coverage", "PushMaxCm", 5f, new ConfigDescription("Push mode: largest poke-through (cm, for a 170 cm character) that is pushed back. Larger pokes are ignored.", new AcceptableValueRange<float>(.5f, 8f)));
         Skinning = Config.Bind("Coverage", "Skinning", "Managed", new ConfigDescription("How garment and skin surfaces are measured: BakeMesh = native bake (reference), Managed = plain C# skinning without a native bake (each renderer is checked once against BakeMesh and falls back if it differs by more than 1 mm), Check = bake every time and compare with managed, logging the error.", new AcceptableValueList<string>("BakeMesh", "Managed", "Check")));
+        SkinDisplacementScale = Config.Bind("Coverage", "SkinDisplacementScale", 1f, new ConfigDescription("Experiment: multiplies the tessellation displacement amplitude (_HeightTessAmplitude0-3) of the body skin materials. The skin shader displaces the surface by up to about 2 cm beyond the mesh, which makes skin show through clothing; lower values flatten that (and skin detail). 1 = unchanged.", new AcceptableValueRange<float>(0f, 1f)));
         MenuKey = Config.Bind("Keys", "Menu", KeyCode.Slash, "Open clipping menu.");
         RulesPath = Path.Combine(Paths.ConfigPath, "CMAClothingFix.rules.json");
         ReportsPath = Path.Combine(Paths.BepInExRootPath, "CMAClothingFix-reports");

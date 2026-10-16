@@ -25,6 +25,8 @@ internal sealed class CoverageFitter
     private readonly Dictionary<int, State> states = new();
     private readonly HashSet<string> warnings = new();
     private readonly HashSet<string> loggedOutfits = new(), loggedOutfitLines = new(), shadersProbed = new();
+    private readonly Dictionary<int, (Material material, float[] amplitude)> skinDisplacement = new();
+    private static readonly string[] TessAmplitudes = { "_HeightTessAmplitude0", "_HeightTessAmplitude1", "_HeightTessAmplitude2", "_HeightTessAmplitude3" };
     private readonly AlphaCoverage alpha = new();
     internal int ActiveMasks => states.Values.Count(s => s.Replacement != null);
     internal int PendingMasks => states.Values.Count(s => !s.Finished);
@@ -48,6 +50,7 @@ internal sealed class CoverageFitter
                 && OriginalMesh(r) != null && outfit.Items.TryGetValue(outfit.OwnerOf(r), out var item) && item.Visible && item.Layer >= 0).ToArray();
             string signature = outfit.Signature();
             // One compact line per outfit change so problems can be diagnosed from LogOutput.log without saving a report.
+            ApplySkinDisplacement(outfit);
             if (loggedOutfits.Add(signature)) ProbeShaders(outfit);
             if (loggedOutfits.Contains(signature) && loggedOutfitLines.Add(signature))
                 Plugin.Logger.LogInfo("Outfit: " + string.Join("; ", outfit.Items.Values.OrderBy(x => x.Layer).ThenBy(x => x.Kind)
@@ -91,6 +94,38 @@ internal sealed class CoverageFitter
         }
         foreach (int id in states.Keys.Where(x => !wanted.Contains(x)).ToArray()) { Release(states[id]); states.Remove(id); }
         alpha.End();
+    }
+
+    // Experiment: the body skin is a tessellated layered shader with a height map (_DisplacementMode 3, amplitude about 2 cm), so the visible
+    // surface sits centimetres off the mesh the mod measures. Scale that amplitude on the body skin materials; restore the originals at scale 1.
+    private void ApplySkinDisplacement(Outfit outfit)
+    {
+        float scale = Plugin.SkinDisplacementScale.Value;
+        foreach (var renderer in outfit.Renderers.Where(r => outfit.OwnerOf(r) == "@body"))
+            foreach (var material in renderer.sharedMaterials)
+            {
+                if (material == null || !(material.name.StartsWith("Skin_Body", StringComparison.Ordinal) || material.name.StartsWith("Pezones", StringComparison.Ordinal))) continue;
+                int id = material.GetInstanceID();
+                if (!skinDisplacement.TryGetValue(id, out var saved))
+                {
+                    if (scale == 1) continue;
+                    saved = (material, TessAmplitudes.Select(name => material.HasProperty(name) ? material.GetFloat(name) : float.NaN).ToArray());
+                    skinDisplacement[id] = saved;
+                    Plugin.Logger.LogInfo($"Skin displacement: '{material.name}' amplitudes {string.Join(", ", saved.amplitude.Select(a => a.ToString("0.###")))} scaled by {scale:0.##}.");
+                }
+                for (int i = 0; i < TessAmplitudes.Length; i++)
+                    if (!float.IsNaN(saved.amplitude[i])) material.SetFloat(TessAmplitudes[i], saved.amplitude[i] * scale);
+            }
+    }
+
+    private void RestoreSkinDisplacement()
+    {
+        foreach (var (material, amplitude) in skinDisplacement.Values)
+        {
+            if (material == null) continue;
+            for (int i = 0; i < TessAmplitudes.Length; i++) if (!float.IsNaN(amplitude[i])) material.SetFloat(TessAmplitudes[i], amplitude[i]);
+        }
+        skinDisplacement.Clear();
     }
 
     // Experiment (depth offset / stencil): list the depth, stencil, cull and height related properties of each distinct shader in use,
@@ -578,6 +613,7 @@ internal sealed class CoverageFitter
         states.Clear();
         alpha.Clear();
         meshData.Clear(); skinChecked.Clear(); skinBad.Clear();
+        RestoreSkinDisplacement();
     }
     private static void Release(State s)
     {
